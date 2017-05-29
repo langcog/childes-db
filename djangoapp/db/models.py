@@ -132,6 +132,7 @@ class DependentTier(Model):
 class Token(Model):
     gloss = CharField(max_length=255, blank=True, default=None)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
+    order = IntegerField(blank=True, null=True, default=None)
     utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
     replacement = CharField(max_length=255, blank=True, default=None)
     stem = CharField(max_length=255, blank=True, default=None)
