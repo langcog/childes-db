@@ -22,13 +22,13 @@ with open(os.path.join(settings.BASE_DIR, JSON_FILENAME)) as clan_counts_file:
     clan_counts = json.load(clan_counts_file)
 
 for corpus_name, clan_count in clan_counts.iteritems():
+    print corpus_name
     if BY_SPEAKER:
-        print corpus_name
         corpus_name, speaker_code = corpus_name.split('_')
-        db_total = Token.objects.filter(corpus__name=corpus_name, speaker_code=speaker_code).count()
+        db_total = Token.objects.filter(corpus__name=corpus_name, speaker_code=speaker_code).exclude(part_of_speech__exact='').count()
         test_method_name = 'test_unigrams_{}_{}'.format(corpus_name, speaker_code)
     else:
-        db_total = Token.objects.filter(corpus__name=corpus_name).count()
+        db_total = Token.objects.filter(corpus__name=corpus_name).exclude(part_of_speech__exact='').count()
         test_method_name = 'test_unigrams_{}'.format(corpus_name)
 
     test_method = test_generator(clan_count, db_total)
