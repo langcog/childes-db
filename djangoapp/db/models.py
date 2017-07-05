@@ -10,7 +10,6 @@ from __future__ import unicode_literals
 
 from django.db.models import Model, CharField, ForeignKey, IntegerField, DateField, TextField, FloatField
 from datetime import datetime
-# from django.utils import timezone # use timezone.now() instead of datetime.now()
 
 class Collection(Model):
     name = CharField(max_length=255, blank=True, default=None, null=True)
@@ -103,7 +102,7 @@ class Transcript(Model):
     # warning = CharField(max_length=255, blank=True, default=None, null=True)
     # activities = CharField(max_length=255, blank=True, default=None, null=True)
     # comment = CharField(max_length=255, blank=True, default=None, null=True)
-    date = DateField(max_length=255, blank=True, default=datetime.now(), null=True)
+    date = DateField(max_length=255, blank=True, default=datetime.now, null=True)
     # new_episode = CharField(max_length=255, blank=True, default=None, null=True)
     # new_language = CharField(max_length=255, blank=True, default=None, null=True)
     # page = CharField(max_length=255, blank=True, default=None, null=True)
@@ -137,14 +136,14 @@ class Utterance(Model):
         db_table = 'utterance'
 
 
-class DependentTier(Model):
-    code = CharField(max_length=255, blank=True, default=None, null=True)
-    line = CharField(max_length=255, blank=True, default=None, null=True)
-    utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
-
-    class Meta:
-        app_label = 'db'
-        db_table = 'dependent_tier'
+# class DependentTier(Model):
+#     code = CharField(max_length=255, blank=True, default=None, null=True)
+#     line = CharField(max_length=255, blank=True, default=None, null=True)
+#     utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
+#
+#     class Meta:
+#         app_label = 'db'
+#         db_table = 'dependent_tier'
 
 
 class Token(Model):
