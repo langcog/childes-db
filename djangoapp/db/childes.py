@@ -37,6 +37,9 @@ class CHILDESCorpusReader(XMLCorpusReader):
         XMLCorpusReader.__init__(self, root, fileids)
         self._lazy = lazy
 
+    def test(self):
+        return 12
+
     def words(self, fileids=None, speaker='ALL', stem=False,
             relation=False, strip_space=True, replace=False):
         """
@@ -276,6 +279,220 @@ class CHILDESCorpusReader(XMLCorpusReader):
             mlu = 0
         # return {'mlu':mlu,'wordNum':numWords,'sentNum':numSents}
         return mlu
+
+    def _get_relation(self, xmlword):
+        # relational
+        # the gold standard is stored in
+        # <mor></mor><mor type="trn"><gra type="grt">
+        # original: if relation == True:
+        relation = ''
+        for xmlstem_rel in xmlword.findall('.//{%s}mor/{%s}gra'
+                                                   % (NS, NS)):
+            if not xmlstem_rel.get('type') == 'grt':
+                # word = (word[0], word[1],
+                #         xmlstem_rel.get('index')
+                #         + "|" + xmlstem_rel.get('head')
+                #         + "|" + xmlstem_rel.get('relation'))
+
+                # store relation in token map
+                relation = xmlstem_rel.get('index') \
+                                    + "|" + xmlstem_rel.get('head') \
+                                    + "|" + xmlstem_rel.get('relation')
+
+                # ignore gold standard for now
+                # else:
+                #     word = (word[0], word[1], word[2],
+                #             word[0], word[1],
+                #             xmlstem_rel.get('index')
+                #             + "|" + xmlstem_rel.get('head')
+                #             + "|" + xmlstem_rel.get('relation'))
+        try:  # what is this?
+            for xmlpost_rel in xmlword.findall('.//{%s}mor/{%s}mor-post/{%s}gra'
+                                                       % (NS, NS, NS)):
+                if not xmlpost_rel.get('type') == 'grt':
+                    # suffixStem = (suffixStem[0],
+                    #               suffixStem[1],
+                    #               xmlpost_rel.get('index')
+                    #               + "|" + xmlpost_rel.get('head')
+                    #               + "|" + xmlpost_rel.get('relation'))
+
+                    # add suffix relation to normal relation
+                    relation += ' ' + xmlpost_rel.get('index') \
+                                         + "|" + xmlpost_rel.get('head') \
+                                         + "|" + xmlpost_rel.get('relation')
+                    # else:
+                    #     suffixStem = (suffixStem[0], suffixStem[1],
+                    #                   suffixStem[2], suffixStem[0],
+                    #                   suffixStem[1],
+                    #                   xmlpost_rel.get('index')
+                    #                   + "|" + xmlpost_rel.get('head')
+                    #                   + "|" + xmlpost_rel.get('relation'))
+        except:
+            pass
+
+        return relation
+
+    def _get_pos(self, xmlword, suffixStem):
+        # pos
+        # original if relation or pos:
+        pos = ''
+        try:
+            xmlpos = xmlword.findall(".//{%s}c" % NS)
+            # word = (word, xmlpos[0].text)
+            # add pos to map
+            pos = xmlpos[0].text
+            if len(xmlpos) != 1 and suffixStem:
+                suffixStem = (suffixStem, xmlpos[1].text)
+                pos += ' ' + xmlpos[1].text  # POS of suffix
+        except (AttributeError, IndexError), e:
+            pass
+            # we don't really do anyting with below vars...
+            # word = (word, None)
+            # if suffixStem:
+            #     suffixStem = (suffixStem, None)
+        return pos
+
+    def _get_stem(self, xmlword):
+        # stem
+        stem = ''
+        # original if relation or stem
+        try:
+            xmlstem = xmlword.find('.//{%s}stem' % NS)
+            # word = xmlstem.text
+            # replaces word with stem, instead add to map
+            stem = xmlstem.text
+        except AttributeError, e:
+            pass
+        # if there is an inflection
+        try:
+            xmlinfl = xmlword.find('.//{%s}mor/{%s}mw/{%s}mk'
+                                   % (NS, NS, NS))
+            # word += '-' + xmlinfl.text
+            stem += '-' + xmlinfl.text
+        except:
+            pass
+        # if there is a suffix
+        try:
+            xmlsuffix = xmlword.find('.//{%s}mor/{%s}mor-post/{%s}mw/{%s}stem'
+                                     % (NS, NS, NS, NS))
+            suffixStem = xmlsuffix.text
+            stem += ' ' + suffixStem
+        except AttributeError:
+            suffixStem = ""
+        return stem
+
+    def get_custom_sents(self, fileid):  # speaker, sent, stem, relation, pos, strip_space, replace):
+        fileid = self.abspaths([fileid])[0]
+        tree = ElementTree.parse(fileid)
+        xmldoc = tree.getroot()
+        # processing each xml doc
+        # results = []
+        results2 = []
+        for xmlsent in xmldoc.findall('.//{%s}u' % NS):
+
+            utt = ()
+
+            sentID = xmlsent.get('uID')
+            sents = []
+            # place this in map
+            speaker = xmlsent.get('who') # ME
+
+            utt += (sentID, speaker)
+
+            tokens = []
+
+            token_order = 0
+
+            skip_replacement_counter = 0
+
+            for xmlword in xmlsent.findall('.//{%s}w' % NS):
+
+                # skip the replacements of a word - they've already been considered
+                if skip_replacement_counter > 0:
+                    skip_replacement_counter -= 1
+                    continue
+
+                token = {}
+
+                if xmlword.get('type') == 'omission':
+                    continue
+
+                suffixStem = None
+
+                xstr = lambda s: "" if s is None else unicode(s)
+
+                if xmlword.find('.//{%s}langs' % (NS)):
+                    xmlword.text = xmlword.find('.//{%s}langs' % (NS)).tail
+
+                # handles compounds and ignores shortenings (?)
+                text_tags = ["{%s}wk" % NS, "{%s}p" % NS, "{%s}shortening" % NS]
+                if xmlword.findall('*'):
+                    word_tags = xmlword.findall('*')
+                    text = xstr(xmlword.text)
+                    for word_tag in word_tags:
+                        if word_tag.tag in text_tags:
+                            if word_tag.tag == "{%s}wk" % NS:
+                                text += "+"
+                            text += xstr(word_tag.text) + xstr(word_tag.tail)
+                    xmlword.text = text
+
+                if xmlword.text:
+                    word = xmlword.text
+                    token['gloss'] = xmlword.text.strip()
+                else:
+                    print 'empty word in sentence %s' % sentID
+                    word = ''
+                    token['gloss'] = ''
+
+
+                # check if this is a replacement, and then build rep, stem, etc from children
+                if xmlword.find('.//{%s}replacement' % (NS)):
+                    # save children in replacement field
+                    # iterate over children
+                    replacements = []
+                    stems = []
+                    pos = []
+                    relations = []
+                    children = xmlword.findall('.//{%s}w' % NS)
+                    for child in children:
+                        replacements.append(child.text)
+                        stems.append(self._get_stem(child))
+                        pos.append(self._get_pos(child, None))
+                        relations.append(self._get_relation(child))
+                    token['replacement'] = ' '.join(replacements)
+                    token['stem'] = ' '.join(stems)
+                    token['pos'] = ' '.join(pos)
+                    token['relation'] = ' '.join(relations)
+
+                    skip_replacement_counter = len(children)
+                else: # else get stem and pos for this word
+                    # word = word.strip()
+                    token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
+                    token['pos'] = self._get_pos(xmlword, suffixStem)
+                    token['relation'] = self._get_relation(xmlword)
+                    # replacement_elems = filter(lambda x: x.tag == '{%s}w' % NS, [e for e in xmlword.iter() if e is not xmlword])
+                    # replacements = [r.text for r in replacement_elems]
+                    # replacement_str = ' '.join(replacements)
+                    # if replacement_str:
+                    #     token['replacement'] = replacement_str
+                    #     skip_replacement_counter = len(replacements)
+                # parent_map = dict((c, p) for p in tree.getiterator() for c in p)
+                #
+                # if parent_map.get(xmlword) and parent_map.get(xmlword).tag == '{%s}replacement' % NS:
+                #     last_token = tokens[len(tokens) - 1]
+                #     last_token['replacement'] = token['gloss']
+                #     continue # don't save this token in tokens array
+
+                        # strip tailing space
+                token_order += 1
+                token['order'] = token_order
+
+                # sents.append(word)
+                tokens.append(token)
+                # if suffixStem:
+                #     sents.append(suffixStem)
+            results2.append(utt + (tokens,))
+        return results2
 
     def _get_words(self, fileid, speaker, sent, stem, relation, pos,
             strip_space, replace):
