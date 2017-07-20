@@ -3,6 +3,7 @@
 The CHILDES-db project aims to make [CHILDES](http://childes.talkbank.org/) transcripts more accessible by reducing the amount of preprocessing necessary (e.g., CLAN or specific preprocessing libraries) and by making the individual tokens and utterances available in a tabular format. In addition, we plan to release new dated versions periodically to facilitate replication (CHILDES currently does not have a versioning system); we are also working on an API (R and/or Pandas) to provide abstractions such that users do not need to write SQL to perform common tasks.
 
 # Schema
+### Tables
 - `token`: atomic construct, corresponding to a word
 - `utterance`: refers to one or more token records
 - `dependent_tier`: contains metadata associated with an utterance 
@@ -11,7 +12,7 @@ The CHILDES-db project aims to make [CHILDES](http://childes.talkbank.org/) tran
 - `corpus`: a collection of transcripts, generally corresponding to a specific research project
 - `collection`: a collection of corpora, generally corresponding to a specific language
 
-### token
+### Token
 `id`: unique identifier  
 `gloss`: natural language transcription  
 `replacement`: replacement annotation  
@@ -27,6 +28,14 @@ The CHILDES-db project aims to make [CHILDES](http://childes.talkbank.org/) tran
 `speaker_code`: code on the CHILDES tier, e.g. MOT, FAT, INV, or CHI  
 `speaker_name`: natural language designation for speaker  
 `speaker_role`: speaker role as identified by the metadata  
+
+### Utterance
+### Dependent_tier
+### Transcript
+### Participant
+### Corpus
+### Collection
+
 
 # Example Queries
 
