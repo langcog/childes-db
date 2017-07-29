@@ -1,6 +1,6 @@
 # childes-db
 
-The CHILDES-db project aims to make [CHILDES](http://childes.talkbank.org/) transcripts more accessible by reducing the amount of preprocessing necessary (e.g., CLAN or specific preprocessing libraries) and by making the individual tokens and utterances available in a tabular format. In addition, we plan to release new dated versions periodically to facilitate replication (CHILDES currently does not have a versioning system); we are also working on an API (R and/or Pandas) to provide abstractions such that users do not need to write SQL to perform common tasks.
+The CHILDES-db project aims to make [CHILDES](http://childes.talkbank.org/) transcripts more accessible by reducing the amount of preprocessing necessary (e.g., CLAN or specific preprocessing libraries) and by making the individual tokens and utterances available in a tabular format. In addition, we plan to release new dated versions periodically to facilitate replication (the public version of CHILDES currently does not have a versioning system); we are also working on an API (R and/or Pandas) to provide abstractions such that users do not need to write SQL to perform common tasks.
 
 # Schema
 ### Tables
