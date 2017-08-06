@@ -6,6 +6,14 @@ import os
 import traceback
 from django import db
 
+def truncate():
+    Token.objects.all().delete()
+    Utterance.objects.all().delete()
+    Participant.objects.all().delete()
+    Transcript.objects.all().delete()
+    Corpus.objects.all().delete()
+    Collection.objects.all().delete()
+
 def migrate():
     from childes import CHILDESCorpusReader
 
