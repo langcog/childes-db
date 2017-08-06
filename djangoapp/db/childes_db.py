@@ -6,6 +6,14 @@ import os
 import traceback
 from django import db
 
+def truncate():
+    Token.objects.all().delete()
+    Utterance.objects.all().delete()
+    Participant.objects.all().delete()
+    Transcript.objects.all().delete()
+    Corpus.objects.all().delete()
+    Collection.objects.all().delete()
+
 def migrate():
     from childes import CHILDESCorpusReader
 
@@ -19,7 +27,6 @@ def migrate():
     root = '/home/alsan/corpora/childes-xml/'
 
     for collection_name in os.listdir(root):
-
         if collection_name == 'Spanish':
             continue
 
@@ -27,24 +34,20 @@ def migrate():
         collection = Collection.objects.create(name=collection_name)
 
         for corpus_name in os.listdir(corpus_root):
-
-            # if corpus_name not in ('McCune', 'Sachs') :
-            #     continue
-
             print corpus_name
             nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
             corpus = Corpus.objects.create(name=corpus_name, collection=collection)
 
             # Iterate over all transcripts in this corpus
             for fileid in nltk_corpus.fileids():
-                # Create transcript, participant objects up front
-                transcript, participants = create_transcript_and_participants(nltk_corpus, fileid, corpus)
+                # Create transcript and participant objects up front
+                transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus)
 
                 # necessary so child process doesn't inherit file descriptor
                 db.connections.close_all()
 
-                # Create utterance, token objects asynchronously
-                results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants)))
+                # Create utterance and token objects asynchronously
+                results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants, target_child)))
 
     pool.close()
 
@@ -75,8 +78,9 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
     target_child = None
     nltk_target_child, nltk_participants = extract_target_child(nltk_participants)
 
+    # Save target child object
     if nltk_target_child:
-        # Get or create django object
+        # Get or create django participant object for target child
         target_child = get_or_create_participant(corpus, nltk_target_child)
 
         # This participant is its own target child
@@ -84,6 +88,7 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
 
         # Mark in transcript as well
         transcript.target_child = target_child
+        transcript.target_child_name = target_child.name
         transcript.target_child_age = target_child.age
 
         target_child.save()
@@ -91,14 +96,15 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
 
         result_participants.append(target_child)
 
+    # Save all other participants
     for nltk_participant in nltk_participants.values():
         participant = get_or_create_participant(corpus, nltk_participant, target_child)
         result_participants.append(participant)
 
-    return transcript, result_participants
+    return transcript, result_participants, target_child
 
 
-def process_utterances(nltk_corpus, fileid, transcript, participants):
+def process_utterances(nltk_corpus, fileid, transcript, participants, target_child):
 
     sents = nltk_corpus.get_custom_sents(fileid)
     for sent in sents:
@@ -123,7 +129,12 @@ def process_utterances(nltk_corpus, fileid, transcript, participants):
             speaker_code=speaker.code,
             speaker_name=speaker.name,
             speaker_age=speaker.age,
-            speaker_role=speaker.role
+            speaker_role=speaker.role,
+            speaker_sex=speaker.sex,
+            target_child=target_child,
+            target_child_name=target_child.name if target_child else None,
+            target_child_age=target_child.age if target_child else None,
+            target_child_sex=target_child.sex if target_child else None
         )
 
         utt_gloss = []
@@ -167,7 +178,12 @@ def process_utterances(nltk_corpus, fileid, transcript, participants):
                 speaker_code=speaker.code,
                 speaker_name=speaker.name,
                 speaker_age=speaker.age,
-                speaker_role=speaker.role
+                speaker_role=speaker.role,
+                speaker_sex=speaker.sex,
+                target_child=target_child,
+                target_child_name=target_child.name if target_child else None,
+                target_child_age=target_child.age if target_child else None,
+                target_child_sex=target_child.sex if target_child else None
             )
 
         utterance.gloss = ' '.join(utt_gloss)
@@ -241,6 +257,7 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
 
     query_set = Participant.objects.filter(code=code, name=name, role=role, corpus=corpus)
 
+    # Filter participant candidates by target child
     if target_child:
         query_set = query_set.filter(target_child=target_child)
 
@@ -264,7 +281,7 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
 
     update_age(participant, age)
 
-    # TODO confusing
+    # TODO very confusing. in memory attribute gets passed to child process
     # Mark the age for this participant for this transcript, to be saved in utterance / token as speaker_age
     participant.age = age
 
