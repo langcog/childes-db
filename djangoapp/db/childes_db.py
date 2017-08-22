@@ -6,13 +6,19 @@ import os
 import traceback
 from django import db
 
+
 def truncate():
-    Token.objects.all().delete()
-    Utterance.objects.all().delete()
-    Participant.objects.all().delete()
-    Transcript.objects.all().delete()
-    Corpus.objects.all().delete()
-    Collection.objects.all().delete()
+    pass
+    # cursor = db.connection.cursor()
+    # cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+    # cursor.execute("TRUNCATE TABLE token")
+    # cursor.execute("TRUNCATE TABLE utterance")
+    # cursor.execute("TRUNCATE TABLE participant")
+    # cursor.execute("TRUNCATE TABLE transcript")
+    # cursor.execute("TRUNCATE TABLE corpus")
+    # cursor.execute("TRUNCATE TABLE collection")
+    # cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+
 
 def migrate():
     from childes import CHILDESCorpusReader
