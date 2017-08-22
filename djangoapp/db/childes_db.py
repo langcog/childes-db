@@ -14,7 +14,7 @@ def truncate():
     Corpus.objects.all().delete()
     Collection.objects.all().delete()
 
-def migrate():
+def migrate(root):
     from childes import CHILDESCorpusReader
 
     multiprocessing.log_to_stderr()
@@ -23,8 +23,6 @@ def migrate():
 
     pool = multiprocessing.Pool()
     results = []
-
-    root = '/home/alsan/corpora/childes-xml/'
 
     for collection_name in os.listdir(root):
         if collection_name == 'Spanish':
