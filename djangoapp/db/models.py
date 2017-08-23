@@ -88,7 +88,7 @@ class Utterance(Model):
 
 
 class Token(Model):
-    gloss = CharField(max_length=255, blank=True, default=None, null=True)
+    gloss = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
     token_order = IntegerField(blank=True, null=True, default=None)
     utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
@@ -101,7 +101,7 @@ class Token(Model):
     speaker_code = CharField(max_length=255, blank=True, default=None, null=True)
     speaker_name = CharField(max_length=255, blank=True, default=None, null=True)
     speaker_age = FloatField(blank=True, null=True, default=None)
-    speaker_role = CharField(max_length=255, blank=True, default=None, null=True)
+    speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     speaker_sex = CharField(max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="all_related_tokens")
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)

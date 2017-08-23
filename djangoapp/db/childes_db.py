@@ -6,7 +6,6 @@ import os
 import traceback
 from django import db
 
-
 def truncate():
     pass
     # cursor = db.connection.cursor()
@@ -20,7 +19,10 @@ def truncate():
     # cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
 
 
-def migrate(root):
+
+
+def migrate(collection_name, corpus_root):
+
     from childes import CHILDESCorpusReader
 
     multiprocessing.log_to_stderr()
@@ -30,28 +32,24 @@ def migrate(root):
     pool = multiprocessing.Pool()
     results = []
 
-    for collection_name in os.listdir(root):
-        if collection_name == 'Spanish':
-            continue
+    # corpus_root = root + collection_name
+    collection = Collection.objects.create(name=collection_name)
 
-        corpus_root = root + collection_name
-        collection = Collection.objects.create(name=collection_name)
+    for corpus_name in os.listdir(corpus_root):
+        print corpus_name
+        nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
+        corpus = Corpus.objects.create(name=corpus_name, collection=collection)
 
-        for corpus_name in os.listdir(corpus_root):
-            print corpus_name
-            nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
-            corpus = Corpus.objects.create(name=corpus_name, collection=collection)
+        # Iterate over all transcripts in this corpus
+        for fileid in nltk_corpus.fileids():
+            # Create transcript and participant objects up front
+            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus)
 
-            # Iterate over all transcripts in this corpus
-            for fileid in nltk_corpus.fileids():
-                # Create transcript and participant objects up front
-                transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus)
+            # necessary so child process doesn't inherit file descriptor
+            db.connections.close_all()
 
-                # necessary so child process doesn't inherit file descriptor
-                db.connections.close_all()
-
-                # Create utterance and token objects asynchronously
-                results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants, target_child)))
+            # Create utterance and token objects asynchronously
+            results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants, target_child)))
 
     pool.close()
 
