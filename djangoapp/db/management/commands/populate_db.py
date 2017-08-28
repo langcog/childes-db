@@ -11,8 +11,7 @@ class Command(BaseCommand):
 
     # A command must define handle()
     def handle(self, *args, **options):
-        from db.childes_db import migrate
-        from db.truncate import truncate
+        from db.childes_db import populate_db
 
         collection = options.get("collection")
         path = options.get("path")
@@ -25,5 +24,4 @@ class Command(BaseCommand):
             self.stdout.write("Missing --path argument")
             return
 
-        truncate()
-        migrate(collection, path)
+        populate_db(collection, path)

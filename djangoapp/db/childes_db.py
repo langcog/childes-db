@@ -6,22 +6,8 @@ import os
 import traceback
 from django import db
 
-def truncate():
-    pass
-    # cursor = db.connection.cursor()
-    # cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
-    # cursor.execute("TRUNCATE TABLE token")
-    # cursor.execute("TRUNCATE TABLE utterance")
-    # cursor.execute("TRUNCATE TABLE participant")
-    # cursor.execute("TRUNCATE TABLE transcript")
-    # cursor.execute("TRUNCATE TABLE corpus")
-    # cursor.execute("TRUNCATE TABLE collection")
-    # cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
 
-
-
-
-def migrate(collection_name, corpus_root):
+def populate_db(collection_name, corpus_root):
 
     from childes import CHILDESCorpusReader
 
