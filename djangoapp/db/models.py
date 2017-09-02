@@ -124,6 +124,7 @@ class TokenFrequency(Model):
 
 class TranscriptBySpeaker(Model):
     transcript = ForeignKey(Transcript, blank=True, null=True, default=None)
+    corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
     speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_transcript_statistics")

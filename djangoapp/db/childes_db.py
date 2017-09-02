@@ -26,6 +26,7 @@ def populate_db(collection_name, corpus_root):
 
     for corpus_name in os.listdir(corpus_root):
         print corpus_name
+
         nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
         corpus = Corpus.objects.create(name=corpus_name, collection=collection)
 
@@ -190,7 +191,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
 
         num_utterances = speaker_utterances.count()
-        mlu = speaker_utterances.aggregate(Avg('length'))
+        mlu = speaker_utterances.aggregate(Avg('length'))['length__avg']
         num_types = speaker_tokens.values('gloss').distinct().count()
         num_tokens = speaker_tokens.values('gloss').count()
 
