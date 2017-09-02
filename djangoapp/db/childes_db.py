@@ -1,10 +1,13 @@
-from models import Collection, Transcript, Participant, Utterance, Token, Corpus
-import multiprocessing
 import re
-import logging
 import os
+import logging
 import traceback
+import multiprocessing
+
 from django import db
+from django.db.models import Avg, Count
+from collections import defaultdict
+from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
 
 def populate_db(collection_name, corpus_root):
@@ -93,7 +96,6 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
 
 
 def process_utterances(nltk_corpus, fileid, transcript, participants, target_child):
-
     sents = nltk_corpus.get_custom_sents(fileid)
     for sent in sents:
         # TODO use map instead of tuple
@@ -181,6 +183,48 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utterance.length = len(utt_gloss)
         utterance.save()
 
+    # Cache counts
+    # TODO add to models
+    for participant in participants:
+        speaker_utterances = Utterance.objects.filter(speaker=participant, transcript=transcript)
+        speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
+
+        num_utterances = speaker_utterances.count()
+        mlu = speaker_utterances.aggregate(Avg('length'))
+        num_types = speaker_tokens.values('gloss').distinct().count()
+        num_tokens = speaker_tokens.values('gloss').count()
+
+        TranscriptBySpeaker.objects.create(
+            transcript=transcript,
+            corpus=transcript.corpus,
+            speaker=participant,
+            speaker_role=participant.role,
+            target_child=target_child,
+            target_child_name=target_child.name if target_child else None,
+            target_child_age=target_child.age if target_child else None,
+            target_child_sex=target_child.sex if target_child else None,
+            num_utterances=num_utterances,
+            mlu=mlu,
+            num_types=num_types,
+            num_tokens=num_tokens
+        )
+
+        gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
+        for gloss_count in gloss_counts:
+            TokenFrequency.objects.create(
+                transcript=transcript,
+                corpus=transcript.corpus,
+                gloss=gloss_count['gloss'],
+                count=gloss_count['count'],
+                speaker=participant,
+                speaker_role=participant.role,
+                target_child=target_child,
+                target_child_name=target_child.name if target_child else None,
+                target_child_age=target_child.age if target_child else None,
+                target_child_sex=target_child.sex if target_child else None
+            )
+
+
 def extract_target_child(participants):
     nltk_target_child = None
     code_to_pop = None
@@ -199,6 +243,7 @@ def extract_target_child(participants):
         participants.pop(code_to_pop)
     return nltk_target_child, participants
 
+
 def parse_age(age):
     age_in_days = 0
 
@@ -214,6 +259,7 @@ def parse_age(age):
 
     return age_in_days if age_in_days != 0 else None
 
+
 def update_age(participant, age):
     if age:
         if not participant.min_age:
@@ -227,6 +273,7 @@ def update_age(participant, age):
 
         if participant.max_age and age > participant.max_age:
             participant.max_age = age
+
 
 def get_or_create_participant(corpus, attr_map, target_child=None):
     if not attr_map:

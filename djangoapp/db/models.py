@@ -1,11 +1,3 @@
-# -*- coding: utf-8 -*-
-# This is an auto-generated Django model module.
-# You'll have to do the following manually to clean this up:
-#   * Rearrange  order
-#   * Make sure each model has one field with primary_key=True
-#   * Make sure each ForeignKey has `on_delete` set to the desired behavior.
-#   * Remove `managed = False` lines if you wish to allow Django to create, modify, and delete the table
-# Feel free to rename the  but don't rename db_table values or field names.
 from __future__ import unicode_literals
 
 from django.db.models import Model, CharField, ForeignKey, IntegerField, DateField, TextField, FloatField
@@ -77,7 +69,7 @@ class Utterance(Model):
     speaker_age = FloatField(blank=True, null=True, default=None)
     speaker_role = CharField(max_length=255, blank=True, default=None, null=True)
     speaker_sex = CharField(max_length=255, blank=True, default=None, null=True)
-    target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="all_related_utterances")
+    target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_utterances")
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
     target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
@@ -103,7 +95,7 @@ class Token(Model):
     speaker_age = FloatField(blank=True, null=True, default=None)
     speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     speaker_sex = CharField(max_length=255, blank=True, default=None, null=True)
-    target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="all_related_tokens")
+    target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_tokens")
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
     target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
@@ -111,3 +103,38 @@ class Token(Model):
     class Meta:
         app_label = 'db'
         db_table = 'token'
+
+
+class TokenFrequency(Model):
+    transcript = ForeignKey(Transcript, blank=True, null=True, default=None)
+    corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
+    gloss = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    count = IntegerField(db_index=True, blank=True, null=True, default=None)
+    speaker = ForeignKey(Participant, blank=True, null=True, default=None)
+    speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_token_frequencies")
+    target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
+    target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
+    target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
+
+    class Meta:
+        app_label = 'db'
+        db_table = 'token_frequency'
+
+
+class TranscriptBySpeaker(Model):
+    transcript = ForeignKey(Transcript, blank=True, null=True, default=None)
+    speaker = ForeignKey(Participant, blank=True, null=True, default=None)
+    speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_transcript_statistics")
+    target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
+    target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
+    target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
+    num_utterances = IntegerField(blank=True, null=True, default=None)
+    mlu = FloatField(blank=True, null=True, default=None)
+    num_types = IntegerField(blank=True, null=True, default=None)
+    num_tokens = IntegerField(blank=True, null=True, default=None)
+
+    class Meta:
+        app_label = 'db'
+        db_table = 'transcript_by_speaker'
