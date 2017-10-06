@@ -2,6 +2,22 @@
 
 The CHILDES-db project aims to make [CHILDES](http://childes.talkbank.org/) transcripts more accessible by reducing the amount of preprocessing necessary (e.g., CLAN or specific preprocessing libraries) and by making the individual tokens and utterances available in a tabular format. In addition, we plan to release new dated versions periodically to facilitate replication (the public version of CHILDES currently does not have a versioning system); we are also working on an API (R and/or Pandas) to provide abstractions such that users do not need to write SQL to perform common tasks.
 
+# Local Installation
+
+A recent version of this database is available for download at http://childes-db.stanford.edu/docs.html. Installation requires a running MySQL database. To add the database, authorize as a database user with sufficient permissions to create a new database:
+
+`mysql -u <username> -p` 
+
+And provide the corresponding password. Once authorized, create a new database with:
+
+`CREATE DATABASE childes-db-version-0.1.0`  
+
+Exit mysql with `\q` and unzip the sql dump file (childes-db-version-0.1.0.sql.gz). The unzipped SQL dump can then be imported to the local database with:
+
+`mysql -u <username> -p childes-db-version-0.1.0 < childes-db-version-0.1.0.sql`  
+
+Remember to change the version number if necessary. GUI tools like SequelPro may also be used for many of the tasks above.
+
 # Tables
 Tables are split into primary tables, containing representations of the transcripts, and derived tables that contain cached values (for the `rchildes` API).  
 
