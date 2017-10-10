@@ -48,6 +48,7 @@ class Transcript(Model):
     target_child = ForeignKey(Participant, blank=True, null=True, default=None)
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(blank=True, null=True, default=None)
+    target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -61,14 +62,12 @@ class Utterance(Model):
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
     length = IntegerField(blank=True, null=True, default=None)
     transcript = ForeignKey(Transcript, blank=True, null=True, default=None)
-    order = IntegerField(blank=True, null=True, default=None)
+    utterance_order = IntegerField(blank=True, null=True, default=None)
     corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
     part_of_speech = TextField(blank=True, default=None, null=True)
     speaker_code = CharField(max_length=255, blank=True, default=None, null=True)
     speaker_name = CharField(max_length=255, blank=True, default=None, null=True)
-    speaker_age = FloatField(blank=True, null=True, default=None)
     speaker_role = CharField(max_length=255, blank=True, default=None, null=True)
-    speaker_sex = CharField(max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_utterances")
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
@@ -92,9 +91,7 @@ class Token(Model):
     corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
     speaker_code = CharField(max_length=255, blank=True, default=None, null=True)
     speaker_name = CharField(max_length=255, blank=True, default=None, null=True)
-    speaker_age = FloatField(blank=True, null=True, default=None)
     speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
-    speaker_sex = CharField(max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_tokens")
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)

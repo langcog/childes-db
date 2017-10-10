@@ -82,6 +82,7 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
         transcript.target_child = target_child
         transcript.target_child_name = target_child.name
         transcript.target_child_age = target_child.age
+        transcript.target_child_sex = target_child.sex
 
         target_child.save()
         transcript.save()
@@ -119,9 +120,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             corpus=transcript.corpus,
             speaker_code=speaker.code,
             speaker_name=speaker.name,
-            speaker_age=speaker.age,
             speaker_role=speaker.role,
-            speaker_sex=speaker.sex,
             target_child=target_child,
             target_child_name=target_child.name if target_child else None,
             target_child_age=target_child.age if target_child else None,
@@ -168,9 +167,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 corpus=transcript.corpus,
                 speaker_code=speaker.code,
                 speaker_name=speaker.name,
-                speaker_age=speaker.age,
                 speaker_role=speaker.role,
-                speaker_sex=speaker.sex,
                 target_child=target_child,
                 target_child_name=target_child.name if target_child else None,
                 target_child_age=target_child.age if target_child else None,
