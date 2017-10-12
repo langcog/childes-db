@@ -103,7 +103,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         # TODO use map instead of tuple
         uID = int(sent[0].replace("u", "")) + 1
         speaker_code = sent[1]
-        tokens = sent[2]
+        terminator = sent[2]
+        tokens = sent[3]
 
         # TODO use map code: participant object
         for participant in participants:
@@ -113,10 +114,20 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         if not speaker:
             raise Exception('code not found in participant array: %s, transcript id %s' % (str(speaker_code), str(transcript.pk)))
 
+        if terminator == "p":
+            utterance_type = "declarative"
+        elif terminator == "q":
+            utterance_type = "question"
+        elif terminator == "e":
+            utterance_type = "imperative_emphatic"
+        else:
+            raise Exception("Unknown utterance terminator")
+
         utterance = Utterance.objects.create(
             speaker=speaker,
             transcript=transcript,
             order=uID,
+            type=utterance_type,
             corpus=transcript.corpus,
             speaker_code=speaker.code,
             speaker_name=speaker.name,
@@ -159,6 +170,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 replacement=replacement,
                 stem=stem,
                 part_of_speech=part_of_speech,
+                utterance_type=utterance_type,
                 relation=relation,
                 token_order=token_order,
                 speaker=speaker,

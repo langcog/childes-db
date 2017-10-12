@@ -390,6 +390,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
         results2 = []
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
 
+            # TODO confusing tuple structure, use map
+
             utt = ()
 
             sentID = xmlsent.get('uID')
@@ -404,6 +406,10 @@ class CHILDESCorpusReader(XMLCorpusReader):
             token_order = 0
 
             skip_replacement_counter = 0
+
+            # extract utterance terminator
+            terminator = xmlsent.find(".//{%s}t" % NS).attrib['type']
+            utt += (terminator,)
 
             for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
