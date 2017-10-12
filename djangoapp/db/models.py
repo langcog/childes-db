@@ -141,3 +141,15 @@ class TranscriptBySpeaker(Model):
     class Meta:
         app_label = 'db'
         db_table = 'transcript_by_speaker'
+
+
+class Annotation(Model):
+    utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
+    type = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    flavor = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    who = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    text = TextField(blank=True, default=None, null=True)
+
+    class Meta:
+        app_label = 'db'
+        db_table = 'annotation'

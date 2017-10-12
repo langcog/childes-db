@@ -411,6 +411,19 @@ class CHILDESCorpusReader(XMLCorpusReader):
             terminator = xmlsent.find(".//{%s}t" % NS).attrib['type']
             utt += (terminator,)
 
+            # get dependent tiers / annotations
+            annotations = []
+            annotation_tags = xmlsent.find(".//{%s}a" % NS)
+            for tag in annotation_tags:
+                annotation = {}
+                annotation['type'] = tag.attrib.get('type')
+                annotation['flavor'] = tag.attrib.get('flavor')
+                annotation['who'] = tag.attrib.get('who')
+                annotation['text'] = tag.text
+                annotations.append(annotation)
+
+            utt += (annotations,)
+
             # extract media info, if it exists
             media = {}
             media_element = xmlsent.find(".//{%s}media" % NS)

@@ -7,7 +7,7 @@ import multiprocessing
 from django import db
 from django.db.models import Avg, Count
 from collections import defaultdict
-from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker, Annotation
 
 
 def populate_db(collection_name, corpus_root):
@@ -105,7 +105,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         speaker_code = sent[1]
         terminator = sent[2]
         media = sent[3]
-        tokens = sent[4]
+        annotations = sent[4]
+        tokens = sent[5]
 
         # TODO use map code: participant object
         for participant in participants:
@@ -141,10 +142,20 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             target_child_name=target_child.name if target_child else None,
             target_child_age=target_child.age if target_child else None,
             target_child_sex=target_child.sex if target_child else None,
-            media_start = media_start,
+            media_start = media_start, # TODO use .get for map
             media_end = media_end,
             media_unit = media_unit
         )
+
+        # TODO subroutine for diff table?
+        for annotation in annotations:
+            Annotation.objects.create(
+                utterance=utterance,
+                type=annotation.get("type"),
+                flavor=annotation.get("flavor"),
+                who=annotation.get("who"),
+                text=annotation.get("text")
+            )
 
         utt_gloss = []
         utt_stem = []
