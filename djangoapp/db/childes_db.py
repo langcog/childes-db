@@ -131,7 +131,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utterance = Utterance.objects.create(
             speaker=speaker,
             transcript=transcript,
-            order=uID,
+            utterance_order=uID,
             type=utterance_type,
             corpus=transcript.corpus,
             speaker_code=speaker.code,
