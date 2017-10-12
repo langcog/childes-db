@@ -411,6 +411,16 @@ class CHILDESCorpusReader(XMLCorpusReader):
             terminator = xmlsent.find(".//{%s}t" % NS).attrib['type']
             utt += (terminator,)
 
+            # extract media info, if it exists
+            media = {}
+            media_element = xmlsent.find(".//{%s}media" % NS)
+            if media_element:
+                media['start'] = media_element.attrib['start']
+                media['end'] = media_element.attrib['end']
+                media['unit'] = media_element.attrib['unit']
+
+            utt += (media,)
+
             for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
                 # skip the replacements of a word - they've already been considered

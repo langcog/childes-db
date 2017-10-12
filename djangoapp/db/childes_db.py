@@ -104,7 +104,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         uID = int(sent[0].replace("u", "")) + 1
         speaker_code = sent[1]
         terminator = sent[2]
-        tokens = sent[3]
+        media = sent[3]
+        tokens = sent[4]
 
         # TODO use map code: participant object
         for participant in participants:
@@ -123,6 +124,10 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         else:
             raise Exception("Unknown utterance terminator")
 
+        media_start = float(media['start']) if media else None
+        media_end = float(media['end']) if media else None
+        media_unit = media['unit'] if media else None
+
         utterance = Utterance.objects.create(
             speaker=speaker,
             transcript=transcript,
@@ -135,7 +140,10 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             target_child=target_child,
             target_child_name=target_child.name if target_child else None,
             target_child_age=target_child.age if target_child else None,
-            target_child_sex=target_child.sex if target_child else None
+            target_child_sex=target_child.sex if target_child else None,
+            media_start = media_start,
+            media_end = media_end,
+            media_unit = media_unit
         )
 
         utt_gloss = []

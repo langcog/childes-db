@@ -73,6 +73,9 @@ class Utterance(Model):
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
     target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
+    media_start = FloatField(db_index=True, blank=True, null=True, default=None)
+    media_end = FloatField(db_index=True, blank=True, null=True, default=None)
+    media_unit = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
