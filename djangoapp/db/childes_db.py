@@ -100,12 +100,13 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
 def process_utterances(nltk_corpus, fileid, transcript, participants, target_child):
     sents = nltk_corpus.get_custom_sents(fileid)
     for sent in sents:
+
         # TODO use map instead of tuple
         uID = int(sent[0].replace("u", "")) + 1
         speaker_code = sent[1]
         terminator = sent[2]
-        media = sent[3]
-        annotations = sent[4]
+        annotations = sent[3]
+        media = sent[4]
         tokens = sent[5]
 
         # TODO use map code: participant object
@@ -123,7 +124,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         elif terminator == "e":
             utterance_type = "imperative_emphatic"
         else:
-            raise Exception("Unknown utterance terminator")
+            utterance_type = terminator
 
         media_start = float(media['start']) if media else None
         media_end = float(media['end']) if media else None

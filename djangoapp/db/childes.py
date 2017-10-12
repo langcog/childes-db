@@ -413,24 +413,25 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
             # get dependent tiers / annotations
             annotations = []
-            annotation_tags = xmlsent.find(".//{%s}a" % NS)
-            for tag in annotation_tags:
+            annotation_elements = xmlsent.findall(".//{%s}a" % NS)
+            for element in annotation_elements:
                 annotation = {}
-                annotation['type'] = tag.attrib.get('type')
-                annotation['flavor'] = tag.attrib.get('flavor')
-                annotation['who'] = tag.attrib.get('who')
-                annotation['text'] = tag.text
+                annotation['type'] = element.attrib.get('type')
+                annotation['flavor'] = element.attrib.get('flavor')
+                annotation['who'] = element.attrib.get('who')
+                annotation['text'] = element.text
                 annotations.append(annotation)
 
             utt += (annotations,)
 
             # extract media info, if it exists
             media = {}
-            media_element = xmlsent.find(".//{%s}media" % NS)
+            media_element = xmlsent.findall(".//{%s}media" % NS)
+
             if media_element:
-                media['start'] = media_element.attrib['start']
-                media['end'] = media_element.attrib['end']
-                media['unit'] = media_element.attrib['unit']
+                media['start'] = media_element[0].attrib['start']
+                media['end'] = media_element[0].attrib['end']
+                media['unit'] = media_element[0].attrib['unit']
 
             utt += (media,)
 
