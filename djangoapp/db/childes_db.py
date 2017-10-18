@@ -24,7 +24,7 @@ def populate_db(collection_name, corpus_root):
     # corpus_root = root + collection_name
     collection = Collection.objects.create(name=collection_name)
 
-    for corpus_name in os.listdir(corpus_root):
+    for corpus_name in os.walk(corpus_root).next()[1]:
         print corpus_name
 
         nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
