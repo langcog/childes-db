@@ -11,9 +11,32 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
+import json
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+with open(os.path.join(BASE_DIR, 'config.json')) as json_config_file:
+    config = json.load(json_config_file)
+
+DB_HOST = config['mysql']['DB_HOST']
+DB_NAME = config['mysql']['DB_NAME']
+DB_USER = config['mysql']['DB_USER']
+DB_PASSWORD = config['mysql']['DB_PASSWORD']
+DB_PORT = config['mysql']['DB_PORT']
+
+DATA_XML_PATH = config['data']['DATA_XML_PATH']
+
+S3_BUCKET_NAME = config['AWS']['S3_BUCKET_NAME']
+EC2_AMI_ID = config['AWS']['EC2_AMI_ID']
+EC2_INSTANCE_TYPE = config['AWS']['EC2_INSTANCE_TYPE']
+EC2_SECURITY_GROUP_ID = config['AWS']['EC2_SECURITY_GROUP_ID']
+EC2_KEY_NAME = config['AWS']['EC2_KEY_NAME']
+EC2_INSTANCE_USERNAME = config['AWS']['EC2_INSTANCE_USERNAME']
+AWS_FOLDER_PATH = config['AWS']['AWS_FOLDER_PATH']
+
+CHILDES_DB_USER = config['childes-db']['CHILDES_DB_USER']
+CHILDES_DB_NAME = config['childes-db']['CHILDES_DB_NAME']
 
 
 # Quick-start development settings - unsuitable for production
@@ -76,18 +99,14 @@ WSGI_APPLICATION = 'childes_db.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
 
-import json
-with open(os.path.join(BASE_DIR, 'config.json')) as json_config_file:
-    config = json.load(json_config_file)['mysql']
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'HOST': config['DB_HOST'],
-        'NAME': config['DB_NAME'],
-        'USER': config['DB_USER'],
-        'PASSWORD': config['DB_PASSWORD'],
-        'PORT': config['DB_PORT'],
+        'HOST': DB_HOST,
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
+        'PORT': DB_PORT,
     }
 }
 

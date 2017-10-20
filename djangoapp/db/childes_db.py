@@ -1,16 +1,16 @@
 import re
 import os
+import ntpath
 import logging
 import traceback
 import multiprocessing
 
 from django import db
 from django.db.models import Avg, Count
-from collections import defaultdict
 from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker, Annotation
 
 
-def populate_db(collection_name, corpus_root):
+def populate_db(corpus_root):
 
     from childes import CHILDESCorpusReader
 
@@ -20,6 +20,8 @@ def populate_db(collection_name, corpus_root):
 
     pool = multiprocessing.Pool()
     results = []
+
+    collection_name = ntpath.basename(corpus_root)
 
     # corpus_root = root + collection_name
     collection = Collection.objects.create(name=collection_name)
@@ -33,7 +35,11 @@ def populate_db(collection_name, corpus_root):
         # Iterate over all transcripts in this corpus
         for fileid in nltk_corpus.fileids():
             # Create transcript and participant objects up front
-            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus)
+            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus, corpus_root)
+
+            # Ignore old filenames (due to recent update)
+            if not transcript:
+                continue
 
             # necessary so child process doesn't inherit file descriptor
             db.connections.close_all()
@@ -50,7 +56,27 @@ def populate_db(collection_name, corpus_root):
         except:
             traceback.print_exc()
 
-def create_transcript_and_participants(nltk_corpus, fileid, corpus):
+
+def has_new_filenames(corpus_root, fileid):
+    path = os.path.join(corpus_root, fileid)
+    dir_path = os.path.dirname(path)
+    onlyfiles = [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
+    for xml_file in onlyfiles:
+        # Check if has necessary number of digits and if starts with 0
+        if xml_file.startswith('0') and 10 <= len(xml_file) < 14:
+            return True
+    return False
+
+
+def create_transcript_and_participants(nltk_corpus, fileid, corpus, corpus_root):
+
+    # Check against recent update where duplicate filenames are added with
+    # old and new filenames - we're only taking the new filenames here
+    if has_new_filenames(corpus_root, fileid):
+        basename = ntpath.basename(fileid)
+        if not basename.startswith('0'):
+            return None, None, None
+
     # Create transcript object
     metadata = nltk_corpus.corpus(fileid)[0]
 

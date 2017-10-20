@@ -485,10 +485,21 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     relations = []
                     children = xmlword.findall('.//{%s}w' % NS)
                     for child in children:
-                        replacements.append(child.text)
-                        stems.append(self._get_stem(child))
-                        pos.append(self._get_pos(child, None))
-                        relations.append(self._get_relation(child))
+                        if child.text:
+                            replacements.append(child.text)
+
+                        stem_result = self._get_stem(child)
+                        if stem_result:
+                            stems.append(stem_result)
+
+                        pos_result = self._get_pos(child, None)
+                        if pos_result:
+                            pos.append(pos_result)
+
+                        relation_result = self._get_relation(child)
+                        if relation_result:
+                            relations.append(relation_result)
+
                     token['replacement'] = ' '.join(replacements)
                     token['stem'] = ' '.join(stems)
                     token['pos'] = ' '.join(pos)
