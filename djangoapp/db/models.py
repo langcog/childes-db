@@ -14,6 +14,7 @@ class Collection(Model):
 class Corpus(Model):
     name = CharField(max_length=255, blank=True, default=None, null=True) # simple name
     collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -34,6 +35,8 @@ class Participant(Model):
     education = CharField(max_length=255, blank=True, default=None, null=True)
     custom = CharField(max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey('self', blank=True, null=True, default=None)
+    collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -49,6 +52,8 @@ class Transcript(Model):
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(blank=True, null=True, default=None)
     target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
+    collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -76,6 +81,8 @@ class Utterance(Model):
     media_start = FloatField(blank=True, null=True, default=None)
     media_end = FloatField(blank=True, null=True, default=None)
     media_unit = CharField(max_length=255, blank=True, default=None, null=True)
+    collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -101,6 +108,8 @@ class Token(Model):
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
     target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
+    collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -118,6 +127,8 @@ class TokenFrequency(Model):
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
     target_child_sex = CharField(max_length=255, blank=True, default=None, null=True)
+    collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -137,6 +148,8 @@ class TranscriptBySpeaker(Model):
     mlu = FloatField(blank=True, null=True, default=None)
     num_types = IntegerField(blank=True, null=True, default=None)
     num_tokens = IntegerField(blank=True, null=True, default=None)
+    collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -149,6 +162,10 @@ class Annotation(Model):
     flavor = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     who = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     text = TextField(blank=True, default=None, null=True)
+    speaker = ForeignKey(Participant, blank=True, null=True, default=None)
+    corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
+    collection = ForeignKey(Collection, blank=True, null=True, default=None)
+    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
