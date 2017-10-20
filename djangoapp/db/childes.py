@@ -390,6 +390,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
         results2 = []
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
 
+            # TODO confusing tuple structure, use map
+
             utt = ()
 
             sentID = xmlsent.get('uID')
@@ -404,6 +406,34 @@ class CHILDESCorpusReader(XMLCorpusReader):
             token_order = 0
 
             skip_replacement_counter = 0
+
+            # extract utterance terminator
+            terminator = xmlsent.find(".//{%s}t" % NS).attrib['type']
+            utt += (terminator,)
+
+            # get dependent tiers / annotations
+            annotations = []
+            annotation_elements = xmlsent.findall(".//{%s}a" % NS)
+            for element in annotation_elements:
+                annotation = {}
+                annotation['type'] = element.attrib.get('type')
+                annotation['flavor'] = element.attrib.get('flavor')
+                annotation['who'] = element.attrib.get('who')
+                annotation['text'] = element.text
+                annotations.append(annotation)
+
+            utt += (annotations,)
+
+            # extract media info, if it exists
+            media = {}
+            media_element = xmlsent.findall(".//{%s}media" % NS)
+
+            if media_element:
+                media['start'] = media_element[0].attrib['start']
+                media['end'] = media_element[0].attrib['end']
+                media['unit'] = media_element[0].attrib['unit']
+
+            utt += (media,)
 
             for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
@@ -455,10 +485,21 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     relations = []
                     children = xmlword.findall('.//{%s}w' % NS)
                     for child in children:
-                        replacements.append(child.text)
-                        stems.append(self._get_stem(child))
-                        pos.append(self._get_pos(child, None))
-                        relations.append(self._get_relation(child))
+                        if child.text:
+                            replacements.append(child.text)
+
+                        stem_result = self._get_stem(child)
+                        if stem_result:
+                            stems.append(stem_result)
+
+                        pos_result = self._get_pos(child, None)
+                        if pos_result:
+                            pos.append(pos_result)
+
+                        relation_result = self._get_relation(child)
+                        if relation_result:
+                            relations.append(relation_result)
+
                     token['replacement'] = ' '.join(replacements)
                     token['stem'] = ' '.join(stems)
                     token['pos'] = ' '.join(pos)

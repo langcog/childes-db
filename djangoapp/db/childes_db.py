@@ -1,13 +1,17 @@
-from models import Collection, Transcript, Participant, Utterance, Token, Corpus
-import multiprocessing
 import re
-import logging
 import os
+import ntpath
+import logging
 import traceback
+import multiprocessing
+
 from django import db
+from django.db.models import Avg, Count
+from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker, Annotation
 
 
-def migrate(collection_name, corpus_root):
+def populate_db(corpus_root):
+
     from childes import CHILDESCorpusReader
 
     multiprocessing.log_to_stderr()
@@ -17,24 +21,25 @@ def migrate(collection_name, corpus_root):
     pool = multiprocessing.Pool()
     results = []
 
-    # root = '/home/alsan/corpora/childes-xml/'
-
-    # for collection_name in os.listdir(root):
-    #     if collection_name == 'Spanish':
-    #         continue
+    collection_name = ntpath.basename(corpus_root)
 
     # corpus_root = root + collection_name
     collection = Collection.objects.create(name=collection_name)
 
-    for corpus_name in os.listdir(corpus_root):
+    for corpus_name in os.walk(corpus_root).next()[1]:
         print corpus_name
+
         nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
         corpus = Corpus.objects.create(name=corpus_name, collection=collection)
 
         # Iterate over all transcripts in this corpus
         for fileid in nltk_corpus.fileids():
             # Create transcript and participant objects up front
-            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus)
+            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus, corpus_root)
+
+            # Ignore old filenames (due to recent update)
+            if not transcript:
+                continue
 
             # necessary so child process doesn't inherit file descriptor
             db.connections.close_all()
@@ -51,7 +56,27 @@ def migrate(collection_name, corpus_root):
         except:
             traceback.print_exc()
 
-def create_transcript_and_participants(nltk_corpus, fileid, corpus):
+
+def has_new_filenames(corpus_root, fileid):
+    path = os.path.join(corpus_root, fileid)
+    dir_path = os.path.dirname(path)
+    onlyfiles = [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
+    for xml_file in onlyfiles:
+        # Check if has necessary number of digits and if starts with 0
+        if xml_file.startswith('0') and 10 <= len(xml_file) < 14:
+            return True
+    return False
+
+
+def create_transcript_and_participants(nltk_corpus, fileid, corpus, corpus_root):
+
+    # Check against recent update where duplicate filenames are added with
+    # old and new filenames - we're only taking the new filenames here
+    if has_new_filenames(corpus_root, fileid):
+        basename = ntpath.basename(fileid)
+        if not basename.startswith('0'):
+            return None, None, None
+
     # Create transcript object
     metadata = nltk_corpus.corpus(fileid)[0]
 
@@ -83,6 +108,7 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
         transcript.target_child = target_child
         transcript.target_child_name = target_child.name
         transcript.target_child_age = target_child.age
+        transcript.target_child_sex = target_child.sex
 
         target_child.save()
         transcript.save()
@@ -98,13 +124,16 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus):
 
 
 def process_utterances(nltk_corpus, fileid, transcript, participants, target_child):
-
     sents = nltk_corpus.get_custom_sents(fileid)
     for sent in sents:
+
         # TODO use map instead of tuple
         uID = int(sent[0].replace("u", "")) + 1
         speaker_code = sent[1]
-        tokens = sent[2]
+        terminator = sent[2]
+        annotations = sent[3]
+        media = sent[4]
+        tokens = sent[5]
 
         # TODO use map code: participant object
         for participant in participants:
@@ -114,21 +143,46 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         if not speaker:
             raise Exception('code not found in participant array: %s, transcript id %s' % (str(speaker_code), str(transcript.pk)))
 
+        if terminator == "p":
+            utterance_type = "declarative"
+        elif terminator == "q":
+            utterance_type = "question"
+        elif terminator == "e":
+            utterance_type = "imperative_emphatic"
+        else:
+            utterance_type = terminator
+
+        media_start = float(media['start']) if media else None
+        media_end = float(media['end']) if media else None
+        media_unit = media['unit'] if media else None
+
         utterance = Utterance.objects.create(
             speaker=speaker,
             transcript=transcript,
-            order=uID,
+            utterance_order=uID,
+            type=utterance_type,
             corpus=transcript.corpus,
             speaker_code=speaker.code,
             speaker_name=speaker.name,
-            speaker_age=speaker.age,
             speaker_role=speaker.role,
-            speaker_sex=speaker.sex,
             target_child=target_child,
             target_child_name=target_child.name if target_child else None,
             target_child_age=target_child.age if target_child else None,
-            target_child_sex=target_child.sex if target_child else None
+            target_child_sex=target_child.sex if target_child else None,
+            media_start = media_start, # TODO use .get for map
+            media_end = media_end,
+            media_unit = media_unit
         )
+
+        # TODO subroutine for diff table?
+        for annotation in annotations:
+            Annotation.objects.create(
+                utterance=utterance,
+                type=annotation.get("type"),
+                flavor=annotation.get("flavor"),
+                who=annotation.get("who"),
+                text=annotation.get("text")
+            )
 
         utt_gloss = []
         utt_stem = []
@@ -162,6 +216,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 replacement=replacement,
                 stem=stem,
                 part_of_speech=part_of_speech,
+                utterance_type=utterance_type,
                 relation=relation,
                 token_order=token_order,
                 speaker=speaker,
@@ -170,9 +225,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 corpus=transcript.corpus,
                 speaker_code=speaker.code,
                 speaker_name=speaker.name,
-                speaker_age=speaker.age,
                 speaker_role=speaker.role,
-                speaker_sex=speaker.sex,
                 target_child=target_child,
                 target_child_name=target_child.name if target_child else None,
                 target_child_age=target_child.age if target_child else None,
@@ -185,6 +238,48 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utterance.part_of_speech = ' '.join(utt_pos)
         utterance.length = len(utt_gloss)
         utterance.save()
+
+    # Cache counts
+    # TODO add to models
+    for participant in participants:
+        speaker_utterances = Utterance.objects.filter(speaker=participant, transcript=transcript)
+        speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
+
+        num_utterances = speaker_utterances.count()
+        mlu = speaker_utterances.aggregate(Avg('length'))['length__avg']
+        num_types = speaker_tokens.values('gloss').distinct().count()
+        num_tokens = speaker_tokens.values('gloss').count()
+
+        TranscriptBySpeaker.objects.create(
+            transcript=transcript,
+            corpus=transcript.corpus,
+            speaker=participant,
+            speaker_role=participant.role,
+            target_child=target_child,
+            target_child_name=target_child.name if target_child else None,
+            target_child_age=target_child.age if target_child else None,
+            target_child_sex=target_child.sex if target_child else None,
+            num_utterances=num_utterances,
+            mlu=mlu,
+            num_types=num_types,
+            num_tokens=num_tokens
+        )
+
+        gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
+        for gloss_count in gloss_counts:
+            TokenFrequency.objects.create(
+                transcript=transcript,
+                corpus=transcript.corpus,
+                gloss=gloss_count['gloss'],
+                count=gloss_count['count'],
+                speaker=participant,
+                speaker_role=participant.role,
+                target_child=target_child,
+                target_child_name=target_child.name if target_child else None,
+                target_child_age=target_child.age if target_child else None,
+                target_child_sex=target_child.sex if target_child else None
+            )
+
 
 def extract_target_child(participants):
     nltk_target_child = None
@@ -204,6 +299,7 @@ def extract_target_child(participants):
         participants.pop(code_to_pop)
     return nltk_target_child, participants
 
+
 def parse_age(age):
     age_in_days = 0
 
@@ -219,6 +315,7 @@ def parse_age(age):
 
     return age_in_days if age_in_days != 0 else None
 
+
 def update_age(participant, age):
     if age:
         if not participant.min_age:
@@ -232,6 +329,7 @@ def update_age(participant, age):
 
         if participant.max_age and age > participant.max_age:
             participant.max_age = age
+
 
 def get_or_create_participant(corpus, attr_map, target_child=None):
     if not attr_map:
