@@ -30,12 +30,13 @@ def populate_db(corpus_root):
         print corpus_name
 
         nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
-        corpus = Corpus.objects.create(name=corpus_name, collection=collection)
+        corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
 
         # Iterate over all transcripts in this corpus
         for fileid in nltk_corpus.fileids():
             # Create transcript and participant objects up front
-            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus, corpus_root)
+            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus,
+                                                                                        collection)
 
             # Ignore old filenames (due to recent update)
             if not transcript:
@@ -45,7 +46,8 @@ def populate_db(corpus_root):
             db.connections.close_all()
 
             # Create utterance and token objects asynchronously
-            results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants, target_child)))
+            results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants,
+                                                                      target_child)))
 
     pool.close()
 
@@ -57,34 +59,23 @@ def populate_db(corpus_root):
             traceback.print_exc()
 
 
-def has_new_filenames(corpus_root, fileid):
-    path = os.path.join(corpus_root, fileid)
-    dir_path = os.path.dirname(path)
-    onlyfiles = [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
-    for xml_file in onlyfiles:
-        # Check if has necessary number of digits and if starts with 0
-        if xml_file.startswith('0') and 10 <= len(xml_file) < 14:
-            return True
-    return False
-
-
-def create_transcript_and_participants(nltk_corpus, fileid, corpus, corpus_root):
-
-    # Check against recent update where duplicate filenames are added with
-    # old and new filenames - we're only taking the new filenames here
-    if has_new_filenames(corpus_root, fileid):
-        basename = ntpath.basename(fileid)
-        if not basename.startswith('0'):
-            return None, None, None
-
+def create_transcript_and_participants(nltk_corpus, fileid, corpus, collection):
     # Create transcript object
     metadata = nltk_corpus.corpus(fileid)[0]
+
+    # Return immediately if transcript has already been parsed
+    pid = metadata.get('PID')
+    if Transcript.objects.filter(pid=pid).exists():
+        return None, None, None
 
     transcript = Transcript.objects.create(
         filename=fileid,
         corpus=corpus,
         languages=metadata.get('Lang'),
-        date=metadata.get('Date')
+        date=metadata.get('Date'),
+        collection=collection,
+        collection_name=collection.name,
+        pid=pid
     )
 
     result_participants = []
@@ -171,7 +162,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             target_child_sex=target_child.sex if target_child else None,
             media_start = media_start, # TODO use .get for map
             media_end = media_end,
-            media_unit = media_unit
+            media_unit = media_unit,
+            collection=transcript.collection,
+            collection_name=transcript.collection.name
         )
 
         # TODO subroutine for diff table?
@@ -181,7 +174,10 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 type=annotation.get("type"),
                 flavor=annotation.get("flavor"),
                 who=annotation.get("who"),
-                text=annotation.get("text")
+                text=annotation.get("text"),
+                corpus=transcript.corpus,
+                collection=transcript.collection,
+                collection_name=transcript.collection.name
             )
 
         utt_gloss = []
@@ -229,7 +225,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 target_child=target_child,
                 target_child_name=target_child.name if target_child else None,
                 target_child_age=target_child.age if target_child else None,
-                target_child_sex=target_child.sex if target_child else None
+                target_child_sex=target_child.sex if target_child else None,
+                collection=transcript.collection,
+                collection_name=transcript.collection.name
             )
 
         utterance.gloss = ' '.join(utt_gloss)
@@ -262,7 +260,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             num_utterances=num_utterances,
             mlu=mlu,
             num_types=num_types,
-            num_tokens=num_tokens
+            num_tokens=num_tokens,
+            collection=transcript.collection,
+            collection_name=transcript.collection.name
         )
 
         gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
@@ -277,7 +277,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 target_child=target_child,
                 target_child_name=target_child.name if target_child else None,
                 target_child_age=target_child.age if target_child else None,
-                target_child_sex=target_child.sex if target_child else None
+                target_child_sex=target_child.sex if target_child else None,
+                collection=transcript.collection,
+                collection_name=transcript.collection.name
             )
 
 
@@ -365,7 +367,9 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
             ses=ses,
             education=education,
             custom=custom,
-            corpus=corpus
+            corpus=corpus,
+            collection=corpus.collection,
+            collection_name=corpus.collection.name
         )
         if target_child:
             participant.target_child = target_child

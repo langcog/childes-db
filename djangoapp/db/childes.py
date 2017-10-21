@@ -37,9 +37,6 @@ class CHILDESCorpusReader(XMLCorpusReader):
         XMLCorpusReader.__init__(self, root, fileids)
         self._lazy = lazy
 
-    def test(self):
-        return 12
-
     def words(self, fileids=None, speaker='ALL', stem=False,
             relation=False, strip_space=True, replace=False):
         """

@@ -44,14 +44,15 @@ class Command(BaseCommand):
         user_at_hostname = '{}@{}'.format(settings.EC2_INSTANCE_USERNAME, instance.public_dns_name)
 
         # Copy sqldump to new instance
-        call(['scp', '-o', 'StrictHostKeyChecking=no', 'i', key_file_path, sqldump_name, user_at_hostname])
+        call(['scp', '-o', 'StrictHostKeyChecking=no', '-i', key_file_path, sqldump_name, user_at_hostname])
 
         # Start MySQLd on new instance
         call(['ssh', '-i', key_file_path, user_at_hostname, '"sudo service mysqld start"'])
 
         # Import sqldump to db on new instance
         call(['ssh', '-i', key_file_path, user_at_hostname,
-              '"zcat {} | mysql -u{} {}'.format(sqldump_name, settings.CHILDES_DB_USER, settings.CHILDES_DB_NAME)])
+              '"zcat {} | mysql -u{} -p{} {}'.format(sqldump_name, settings.CHILDES_DB_USER,
+                                                     settings.CHILDES_DB_PASSWORD, settings.CHILDES_DB_NAME)])
 
         # Send versioned sqldump to S3
         bucket.upload_file(sqldump_name, sqldump_name, ExtraArgs={'ACL': 'public-read'})

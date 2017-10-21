@@ -37,6 +37,7 @@ AWS_FOLDER_PATH = config['AWS']['AWS_FOLDER_PATH']
 
 CHILDES_DB_USER = config['childes-db']['CHILDES_DB_USER']
 CHILDES_DB_NAME = config['childes-db']['CHILDES_DB_NAME']
+CHILDES_DB_PASSWORD = config['childes-db']['CHILDES_DB_PASSWORD']
 
 
 # Quick-start development settings - unsuitable for production
