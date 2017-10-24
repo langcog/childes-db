@@ -64,10 +64,10 @@ class Transcript(Model):
 class Utterance(Model):
     gloss = TextField(blank=True, default=None, null=True)
     stem = TextField(blank=True, default=None, null=True)
-    relation = TextField(blank=True, default=None, null=True)
     type = CharField(max_length=255, blank=True, default=None, null=True)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
-    length = IntegerField(blank=True, null=True, default=None)
+    num_morphemes = IntegerField(blank=True, null=True, default=None)
+    num_tokens = IntegerField(blank=True, null=True, default=None)
     transcript = ForeignKey(Transcript, blank=True, null=True, default=None)
     utterance_order = IntegerField(blank=True, null=True, default=None)
     corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
@@ -96,10 +96,13 @@ class Token(Model):
     token_order = IntegerField(blank=True, null=True, default=None)
     utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
     replacement = CharField(max_length=255, blank=True, default=None, null=True)
-    stem = CharField(max_length=255, blank=True, default=None, null=True)
+    prefix = CharField(max_length=255, blank=True, default=None, null=True)
     part_of_speech = CharField(max_length=255, blank=True, default=None, null=True)
+    stem = CharField(max_length=255, blank=True, default=None, null=True)
+    suffix = CharField(max_length=255, blank=True, default=None, null=True)
+    num_morphemes = IntegerField(blank=True, null=True, default=None)
+    english = CharField(max_length=255, blank=True, default=None, null=True)
     utterance_type = CharField(max_length=255, blank=True, default=None, null=True)
-    relation = CharField(max_length=255, blank=True, default=None, null=True)
     transcript = ForeignKey(Transcript, blank=True, null=True, default=None)
     corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
     speaker_code = CharField(max_length=255, blank=True, default=None, null=True)
@@ -157,17 +160,3 @@ class TranscriptBySpeaker(Model):
         db_table = 'transcript_by_speaker'
 
 
-class Annotation(Model):
-    utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
-    type = CharField(max_length=255, blank=True, default=None, null=True)
-    flavor = CharField(max_length=255, blank=True, default=None, null=True)
-    who = CharField(max_length=255, blank=True, default=None, null=True)
-    text = TextField(blank=True, default=None, null=True)
-    speaker = ForeignKey(Participant, blank=True, null=True, default=None)
-    corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
-    collection = ForeignKey(Collection, blank=True, null=True, default=None)
-    collection_name = CharField(max_length=255, blank=True, default=None, null=True)
-
-    class Meta:
-        app_label = 'db'
-        db_table = 'annotation'

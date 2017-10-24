@@ -1,16 +1,15 @@
 import re
 import os
-import ntpath
 import logging
 import traceback
 import multiprocessing
 
 from django import db
 from django.db.models import Avg, Count
-from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker, Annotation
+from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
 
-def populate_db(corpus_root):
+def populate_db(collection_root, selected_collection=None):
 
     from childes import CHILDESCorpusReader
 
@@ -21,33 +20,38 @@ def populate_db(corpus_root):
     pool = multiprocessing.Pool()
     results = []
 
-    collection_name = ntpath.basename(corpus_root)
+    for collection_name in os.walk(collection_root).next()[1]:
 
-    # corpus_root = root + collection_name
-    collection = Collection.objects.create(name=collection_name)
+        if selected_collection and collection_name != selected_collection:
+            continue
 
-    for corpus_name in os.walk(corpus_root).next()[1]:
-        print corpus_name
+        collection = Collection.objects.create(name=collection_name)
+        corpus_root = os.path.join(collection_root, collection_name)
 
-        nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
-        corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
+        print "\nCollection: {}".format(collection_name)
 
-        # Iterate over all transcripts in this corpus
-        for fileid in nltk_corpus.fileids():
-            # Create transcript and participant objects up front
-            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus,
-                                                                                        collection)
+        for corpus_name in os.walk(corpus_root).next()[1]:
+            print corpus_name
 
-            # Ignore old filenames (due to recent update)
-            if not transcript:
-                continue
+            nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
+            corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
 
-            # necessary so child process doesn't inherit file descriptor
-            db.connections.close_all()
+            # Iterate over all transcripts in this corpus
+            for fileid in nltk_corpus.fileids():
+                # Create transcript and participant objects up front
+                transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus,
+                                                                                            collection)
 
-            # Create utterance and token objects asynchronously
-            results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants,
-                                                                      target_child)))
+                # Ignore old filenames (due to recent update)
+                if not transcript:
+                    continue
+
+                # necessary so child process doesn't inherit file descriptor
+                db.connections.close_all()
+
+                # Create utterance and token objects asynchronously
+                results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants,
+                                                                          target_child)))
 
     pool.close()
 
@@ -122,7 +126,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         uID = int(sent[0].replace("u", "")) + 1
         speaker_code = sent[1]
         terminator = sent[2]
-        annotations = sent[3]
+        # annotations = sent[3]
         media = sent[4]
         tokens = sent[5]
 
@@ -167,23 +171,11 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             collection_name=transcript.collection.name
         )
 
-        # TODO subroutine for diff table?
-        for annotation in annotations:
-            Annotation.objects.create(
-                utterance=utterance,
-                type=annotation.get("type"),
-                flavor=annotation.get("flavor"),
-                who=annotation.get("who"),
-                text=annotation.get("text"),
-                corpus=transcript.corpus,
-                collection=transcript.collection,
-                collection_name=transcript.collection.name
-            )
-
         utt_gloss = []
         utt_stem = []
-        utt_relation = []
+        # utt_relation = []
         utt_pos = []
+        utt_num_morphemes = None
 
         # TODO nltk token instead of token
         for token in tokens:
@@ -192,8 +184,13 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             replacement = token.get('replacement', '')
             stem = token.get('stem', '')
             part_of_speech = token.get('pos', '')
-            relation = token.get('relation', '')
+            # relation = token.get('relation', '')
             token_order = token.get('order', '')
+
+            prefix = token.get('prefix', '')
+            suffix = token.get('suffix', '')
+            english = token.get('english', '')
+            num_morphemes = token.get('morpheme_length')
 
             if gloss:
                 utt_gloss.append(gloss)
@@ -201,8 +198,14 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             if stem:
                 utt_stem.append(stem)
 
-            if relation:
-                utt_relation.append(relation)
+            # if relation:
+            #     utt_relation.append(relation)
+
+            if num_morphemes:
+                if utt_num_morphemes:
+                    utt_num_morphemes += num_morphemes
+                else:
+                    utt_num_morphemes = num_morphemes
 
             if part_of_speech:
                 utt_pos.append(part_of_speech)
@@ -210,10 +213,14 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             Token.objects.create(
                 gloss=gloss,
                 replacement=replacement,
+                prefix=prefix,
+                suffix=suffix,
+                english=english,
                 stem=stem,
                 part_of_speech=part_of_speech,
                 utterance_type=utterance_type,
-                relation=relation,
+                num_morphemes = num_morphemes,
+                # relation=relation,
                 token_order=token_order,
                 speaker=speaker,
                 utterance=utterance,
@@ -232,9 +239,10 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
         utterance.gloss = ' '.join(utt_gloss)
         utterance.stem = ' '.join(utt_stem)
-        utterance.relation = ' '.join(utt_relation)
+        # utterance.relation = ' '.join(utt_relation)
         utterance.part_of_speech = ' '.join(utt_pos)
-        utterance.length = len(utt_gloss)
+        utterance.num_morphemes = utt_num_morphemes
+        utterance.num_tokens = len(utt_gloss)
         utterance.save()
 
     # Cache counts
@@ -244,7 +252,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
 
         num_utterances = speaker_utterances.count()
-        mlu = speaker_utterances.aggregate(Avg('length'))['length__avg']
+        mlu = speaker_utterances.aggregate(Avg('num_tokens'))['num_tokens__avg']
         num_types = speaker_tokens.values('gloss').distinct().count()
         num_tokens = speaker_tokens.values('gloss').count()
 
@@ -311,7 +319,7 @@ def parse_age(age):
         if unit == 'Y':
             age_in_days += number * 365.25
         elif unit == 'M':
-            age_in_days += number * 30
+            age_in_days += number * 365.25 / 12
         elif unit == 'D':
             age_in_days += number
 

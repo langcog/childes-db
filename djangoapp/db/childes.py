@@ -349,6 +349,55 @@ class CHILDESCorpusReader(XMLCorpusReader):
             #     suffixStem = (suffixStem, None)
         return pos
 
+    def _get_morphology(self, xmlword):
+        morpheme_length = 0
+
+        # do i have to make sure this doesn't belong to the clitic...
+        # TODO comment xml structure here. also get mor first
+        prefixes = []
+        xmlprefixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mpfx' % (NS, NS, NS))
+        for xmlprefix in xmlprefixes:
+            prefixes.append(xmlprefix.text)
+            morpheme_length += 1
+        prefix = ' '.join(prefixes)
+
+        pos = ''
+        xml_pos_category = xmlword.findall('.//{%s}mor/{%s}mw/{%s}pos/{%s}c' % (NS, NS, NS, NS))
+        if xml_pos_category:
+            pos = xml_pos_category[0].text
+            xml_pos_subcategories = xmlword.findall('.//{%s}mor/{%s}mw/{%s}pos/{%s}s' % (NS, NS, NS, NS))
+            for xml_pos_subcategory in xml_pos_subcategories:
+                pos += ":" + xml_pos_subcategory.text
+
+        stem = ''
+        xmlstem = xmlword.findall('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS))
+        if xmlstem:
+            stem = xmlstem[0].text
+            morpheme_length += 1
+
+        suffixes = []
+        # why go down the path like this...?
+        # hopefully mk catches both suffixes and fusional suffixes
+        xml_suffixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS))
+        for xml_suffix in xml_suffixes:
+            suffixes.append(xml_suffix.text)
+            morpheme_length += 1
+
+        suffix = ' '.join(suffixes)
+
+        english_translation = '' # empty strings or null
+        xml_english_translation = xmlword.findall('.//{%s}mor/{%s}menx' % (NS, NS))
+        if xml_english_translation:
+            english_translation = xml_english_translation[0].text
+
+
+        if xmlword.findall('.//{%s}mor/{%s}mor-post' % (NS, NS)):
+            morpheme_length += 1
+
+        return prefix, pos, stem, suffix, english_translation, morpheme_length if morpheme_length > 0 else None
+
+
+
     def _get_stem(self, xmlword):
         # stem
         stem = ''
@@ -382,8 +431,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         fileid = self.abspaths([fileid])[0]
         tree = ElementTree.parse(fileid)
         xmldoc = tree.getroot()
-        # processing each xml doc
-        # results = []
+
         results2 = []
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
 
@@ -409,6 +457,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
             utt += (terminator,)
 
             # get dependent tiers / annotations
+            # TODO get a bunch of stuff and return in convenient format
             annotations = []
             annotation_elements = xmlsent.findall(".//{%s}a" % NS)
             for element in annotation_elements:
@@ -477,37 +526,70 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     # save children in replacement field
                     # iterate over children
                     replacements = []
-                    stems = []
+                    prefix = []
                     pos = []
+                    stems = []
+                    suffix = []
+                    english = []
                     relations = []
+                    morpheme_length = None
                     children = xmlword.findall('.//{%s}w' % NS)
                     for child in children:
                         if child.text:
                             replacements.append(child.text)
 
-                        stem_result = self._get_stem(child)
+                        prefix_result, pos_result, stem_result, suffix_result, english_result, morpheme_length_result = \
+                            self._get_morphology(child)
+
+                        if prefix_result:
+                            prefix.append(prefix_result)
+
+                        # pos_result = self._get_pos(child, None)
+                        if pos_result:
+                            pos.append(pos_result)
+
+                        # stem_result = self._get_stem(child)
                         if stem_result:
                             stems.append(stem_result)
 
-                        pos_result = self._get_pos(child, None)
-                        if pos_result:
-                            pos.append(pos_result)
+                        if suffix_result:
+                            suffix.append(suffix_result)
+
+                        if english_result:
+                            english.append(english_result)
 
                         relation_result = self._get_relation(child)
                         if relation_result:
                             relations.append(relation_result)
 
+                        if morpheme_length_result:
+                            if morpheme_length:
+                                morpheme_length += morpheme_length_result
+                            else:
+                                morpheme_length = morpheme_length_result
+
                     token['replacement'] = ' '.join(replacements)
-                    token['stem'] = ' '.join(stems)
+                    token['prefix'] = ' '.join(prefix)
                     token['pos'] = ' '.join(pos)
+                    token['stem'] = ' '.join(stems)
+                    token['suffix'] = ' '.join(suffix)
+                    token['english'] = ' '.join(english)
                     token['relation'] = ' '.join(relations)
+                    token['morpheme_length'] = morpheme_length
 
                     skip_replacement_counter = len(children)
                 else: # else get stem and pos for this word
                     # word = word.strip()
-                    token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
-                    token['pos'] = self._get_pos(xmlword, suffixStem)
+
+                    token['prefix'], token['pos'], token['stem'], token['suffix'], token['english'], token['morpheme_length'] = \
+                        self._get_morphology(xmlword)
+
+                    # token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
+                    # token['pos'] = self._get_pos(xmlword, suffixStem)
                     token['relation'] = self._get_relation(xmlword)
+
+
+
                     # replacement_elems = filter(lambda x: x.tag == '{%s}w' % NS, [e for e in xmlword.iter() if e is not xmlword])
                     # replacements = [r.text for r in replacement_elems]
                     # replacement_str = ' '.join(replacements)
