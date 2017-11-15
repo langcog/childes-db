@@ -6,7 +6,7 @@ from django.core.management import BaseCommand, call_command
 
 
 class Command(BaseCommand):
-    help = "Repopulates local db and deploys new version of childes-db using boto3"
+    help = "On admin server: drops tables, rebuilds db from xml, create new instance, send sqldump and populate"
 
     def handle(self, *args, **options):
 
@@ -23,6 +23,7 @@ class Command(BaseCommand):
         s3 = boto3.resource('s3')
         bucket = s3.Bucket(settings.S3_BUCKET_NAME)
 
+        # TODO use version from database
         # Get new version name
         sqldump_name = get_new_db_version(bucket)
 

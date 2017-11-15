@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 
-from django.db.models import Model, CharField, ForeignKey, IntegerField, DateField, TextField, FloatField
+from django.db.models import Model, CharField, ForeignKey, IntegerField, DateField, TextField, FloatField, BooleanField
 from datetime import datetime
 
 class Collection(Model):
@@ -45,7 +45,7 @@ class Participant(Model):
 
 class Transcript(Model):
     corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
-    languages = CharField(max_length=255, blank=True, default=None, null=True)
+    language = CharField(max_length=255, blank=True, default=None, null=True)
     date = DateField(max_length=255, blank=True, default=datetime.now, null=True)
     filename = CharField(max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey(Participant, blank=True, null=True, default=None)
@@ -66,6 +66,7 @@ class Utterance(Model):
     stem = TextField(blank=True, default=None, null=True)
     type = CharField(max_length=255, blank=True, default=None, null=True)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
+    language = CharField(max_length=255, blank=True, default=None, null=True)
     num_morphemes = IntegerField(blank=True, null=True, default=None)
     num_tokens = IntegerField(blank=True, null=True, default=None)
     transcript = ForeignKey(Transcript, blank=True, null=True, default=None)
@@ -85,6 +86,7 @@ class Utterance(Model):
     collection = ForeignKey(Collection, blank=True, null=True, default=None)
     collection_name = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
 
+
     class Meta:
         app_label = 'db'
         db_table = 'utterance'
@@ -93,6 +95,7 @@ class Utterance(Model):
 class Token(Model):
     gloss = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
+    language = CharField(max_length=255, blank=True, default=None, null=True)
     token_order = IntegerField(blank=True, null=True, default=None)
     utterance = ForeignKey(Utterance, blank=True, null=True, default=None)
     replacement = CharField(max_length=255, blank=True, default=None, null=True)
@@ -127,6 +130,7 @@ class TokenFrequency(Model):
     count = IntegerField(db_index=True, blank=True, null=True, default=None)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
     speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    language = CharField(max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_token_frequencies")
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
@@ -144,6 +148,7 @@ class TranscriptBySpeaker(Model):
     corpus = ForeignKey(Corpus, blank=True, null=True, default=None)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None)
     speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    language = CharField(max_length=255, blank=True, default=None, null=True)
     target_child = ForeignKey(Participant, blank=True, null=True, default=None, related_name="related_transcript_statistics")
     target_child_name = CharField(max_length=255, blank=True, default=None, null=True)
     target_child_age = FloatField(db_index=True, blank=True, null=True, default=None)
@@ -158,5 +163,14 @@ class TranscriptBySpeaker(Model):
     class Meta:
         app_label = 'db'
         db_table = 'transcript_by_speaker'
+
+
+class Admin(Model):
+    date = DateField(max_length=255, blank=True, default=datetime.now, null=True)
+    version = CharField(max_length=255, blank=True, default=None, null=True)
+
+    class Meta:
+        app_label = 'db'
+        db_table = 'admin'
 
 

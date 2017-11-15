@@ -75,7 +75,7 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus, collection):
     transcript = Transcript.objects.create(
         filename=fileid,
         corpus=corpus,
-        languages=metadata.get('Lang'),
+        language=metadata.get('Lang'),
         date=metadata.get('Date'),
         collection=collection,
         collection_name=collection.name,
@@ -168,7 +168,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             media_end = media_end,
             media_unit = media_unit,
             collection=transcript.collection,
-            collection_name=transcript.collection.name
+            collection_name=transcript.collection.name,
+            language=transcript.language
         )
 
         utt_gloss = []
@@ -234,7 +235,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 target_child_age=target_child.age if target_child else None,
                 target_child_sex=target_child.sex if target_child else None,
                 collection=transcript.collection,
-                collection_name=transcript.collection.name
+                collection_name=transcript.collection.name,
+                language=transcript.language
             )
 
         utterance.gloss = ' '.join(utt_gloss)
@@ -270,7 +272,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             num_types=num_types,
             num_tokens=num_tokens,
             collection=transcript.collection,
-            collection_name=transcript.collection.name
+            collection_name=transcript.collection.name,
+            language=transcript.language
         )
 
         gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
@@ -287,7 +290,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 target_child_age=target_child.age if target_child else None,
                 target_child_sex=target_child.sex if target_child else None,
                 collection=transcript.collection,
-                collection_name=transcript.collection.name
+                collection_name=transcript.collection.name,
+                language=transcript.language
             )
 
 
