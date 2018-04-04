@@ -391,10 +391,18 @@ class CHILDESCorpusReader(XMLCorpusReader):
             english_translation = xml_english_translation[0].text
 
 
-        if xmlword.findall('.//{%s}mor/{%s}mor-post' % (NS, NS)):
+        clitic = ''
+        xml_clitic = xmlword.findall('.//{%s}mor/{%s}mor-post' % (NS, NS))
+        if xml_clitic:
+            clitic_parts = xml_clitic[0].findall('.//{%s}mw' % NS)
+            if clitic_parts:
+                a = clitic_parts[0].findall('.//{%s}pos/{%s}c' % (NS, NS))
+                b = clitic_parts[0].findall('.//{%s}stem' % NS)
+                c = clitic_parts[0].findall('.//{%s}mk' % NS)
+                clitic = " ".join([a[0].text if a else "", b[0].text if b else "", c[0].text if c else ""])
             morpheme_length += 1
 
-        return prefix, pos, stem, suffix, english_translation, morpheme_length if morpheme_length > 0 else None
+        return prefix, pos, stem, suffix, english_translation, clitic, morpheme_length if morpheme_length > 0 else None
 
 
 
@@ -531,6 +539,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     stems = []
                     suffix = []
                     english = []
+                    clitics = []
                     relations = []
                     morpheme_length = None
                     children = xmlword.findall('.//{%s}w' % NS)
@@ -538,7 +547,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                         if child.text:
                             replacements.append(child.text)
 
-                        prefix_result, pos_result, stem_result, suffix_result, english_result, morpheme_length_result = \
+                        prefix_result, pos_result, stem_result, suffix_result, english_result, clitic_result, morpheme_length_result = \
                             self._get_morphology(child)
 
                         if prefix_result:
@@ -558,6 +567,9 @@ class CHILDESCorpusReader(XMLCorpusReader):
                         if english_result:
                             english.append(english_result)
 
+                        if clitic_result:
+                            clitics.append(clitic_result)
+
                         relation_result = self._get_relation(child)
                         if relation_result:
                             relations.append(relation_result)
@@ -574,6 +586,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     token['stem'] = ' '.join(stems)
                     token['suffix'] = ' '.join(suffix)
                     token['english'] = ' '.join(english)
+                    token['clitic'] = ' '.join(clitics)
                     token['relation'] = ' '.join(relations)
                     token['morpheme_length'] = morpheme_length
 
@@ -581,7 +594,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 else: # else get stem and pos for this word
                     # word = word.strip()
 
-                    token['prefix'], token['pos'], token['stem'], token['suffix'], token['english'], token['morpheme_length'] = \
+                    token['prefix'], token['pos'], token['stem'], token['suffix'], token['english'], token['clitic'], token['morpheme_length'] = \
                         self._get_morphology(xmlword)
 
                     # token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column

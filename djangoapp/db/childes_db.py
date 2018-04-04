@@ -8,10 +8,11 @@ from django import db
 from django.db.models import Avg, Count
 from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
+from lexical_diversity import mtld, hdd
+from childes import CHILDESCorpusReader
+
 
 def populate_db(collection_root, selected_collection=None):
-
-    from childes import CHILDESCorpusReader
 
     multiprocessing.log_to_stderr()
     logger = multiprocessing.get_logger()
@@ -30,28 +31,13 @@ def populate_db(collection_root, selected_collection=None):
 
         print "\nCollection: {}".format(collection_name)
 
-        for corpus_name in os.walk(corpus_root).next()[1]:
-            print corpus_name
-
-            nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
-            corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
-
-            # Iterate over all transcripts in this corpus
-            for fileid in nltk_corpus.fileids():
-                # Create transcript and participant objects up front
-                transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus,
-                                                                                            collection)
-
-                # Ignore old filenames (due to recent update)
-                if not transcript:
-                    continue
-
-                # necessary so child process doesn't inherit file descriptor
-                db.connections.close_all()
-
-                # Create utterance and token objects asynchronously
-                results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants,
-                                                                          target_child)))
+        if os.walk(corpus_root).next()[2]:
+            # corpora in here (i.e. *.zip files present)
+            results += crawl_corpora(corpus_root, collection, pool)
+        else:
+            # go past subdirectories (i.e. Korea, Indonesian, etc.)
+            for dir in os.walk(corpus_root).next()[1]:
+                results += crawl_corpora(corpus_root + "/" + dir, collection, pool)
 
     pool.close()
 
@@ -61,6 +47,34 @@ def populate_db(collection_root, selected_collection=None):
             result.get()
         except:
             traceback.print_exc()
+
+
+def crawl_corpora(corpus_root, collection, pool):
+    results = []
+    for corpus_name in os.walk(corpus_root).next()[1]:
+        print corpus_name
+
+        nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
+        corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
+
+        # Iterate over all transcripts in this corpus
+        for fileid in nltk_corpus.fileids():
+
+            # Create transcript and participant objects up front
+            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus,
+                                                                                        collection)
+
+            # Ignore old filenames (due to recent update)
+            if not transcript:
+                continue
+
+            # necessary so child process doesn't inherit file descriptor
+            db.connections.close_all()
+
+            # Create utterance and token objects asynchronously
+            results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants,
+                                                                      target_child)))
+    return results
 
 
 def create_transcript_and_participants(nltk_corpus, fileid, corpus, collection):
@@ -75,6 +89,7 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus, collection):
     transcript = Transcript.objects.create(
         filename=fileid,
         corpus=corpus,
+        corpus_name=corpus.name,
         language=metadata.get('Lang'),
         date=metadata.get('Date'),
         collection=collection,
@@ -157,6 +172,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             utterance_order=uID,
             type=utterance_type,
             corpus=transcript.corpus,
+            corpus_name=transcript.corpus.name,
             speaker_code=speaker.code,
             speaker_name=speaker.name,
             speaker_role=speaker.role,
@@ -191,6 +207,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             prefix = token.get('prefix', '')
             suffix = token.get('suffix', '')
             english = token.get('english', '')
+            clitic = token.get('clitic', '')
             num_morphemes = token.get('morpheme_length')
 
             if gloss:
@@ -217,6 +234,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 prefix=prefix,
                 suffix=suffix,
                 english=english,
+                clitic=clitic,
                 stem=stem,
                 part_of_speech=part_of_speech,
                 utterance_type=utterance_type,
@@ -227,6 +245,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 utterance=utterance,
                 transcript=transcript,
                 corpus=transcript.corpus,
+                corpus_name=transcript.corpus.name,
                 speaker_code=speaker.code,
                 speaker_name=speaker.name,
                 speaker_role=speaker.role,
@@ -269,12 +288,15 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             target_child_sex=target_child.sex if target_child else None,
             num_utterances=num_utterances,
             mlu=mlu,
+            mtld=mtld(speaker_tokens),
+            hdd=hdd(speaker_tokens),
             num_types=num_types,
             num_tokens=num_tokens,
             collection=transcript.collection,
             collection_name=transcript.collection.name,
-            language=transcript.language
+            language = transcript.language
         )
+
 
         gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
         for gloss_count in gloss_counts:
@@ -380,6 +402,7 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
             education=education,
             custom=custom,
             corpus=corpus,
+            corpus_name=corpus.name,
             collection=corpus.collection,
             collection_name=corpus.collection.name
         )
