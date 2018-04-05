@@ -3,6 +3,7 @@ import boto3
 from subprocess import call
 from django.conf import settings
 from django.core.management import BaseCommand, call_command
+from db.models import Admin
 
 
 class Command(BaseCommand):
@@ -25,7 +26,13 @@ class Command(BaseCommand):
 
         # TODO use version from database
         # Get new version name
-        sqldump_name = get_new_db_version(bucket)
+        sqldump_version = get_new_db_version(bucket)
+        sqldump_name = 'childes-db-version-' + sqldump_version + '.sql.gz'
+
+        # Add version to db
+        Admin.objects.create(
+            version=sqldump_version
+        )
 
         # Connect to EC2 and create new instance
         ec2 = boto3.resource('ec2')
@@ -34,8 +41,12 @@ class Command(BaseCommand):
                                          KeyName=settings.EC2_KEY_NAME, MinCount=1, MaxCount=1)[0]
 
         # Create sqldump of local childes-db and zip
-        call(['mysqldump', '-u', settings.DB_USER, '-p', settings.DB_PASSWORD, settings.DB_NAME, '|', 'gzip', '>',
-              sqldump_name])
+        #call(['mysqldump', '-u', settings.DB_USER, '-p{}'.format(settings.DB_PASSWORD), settings.DB_NAME, '|', 'gzip', '>',
+         #     sqldump_name])
+
+        os.system("mysqldump -u{} -p{} {} | gzip > {}".format(
+            settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME, sqldump_name
+        ))
 
         instance.wait_until_running()
         instance.load()
@@ -45,15 +56,27 @@ class Command(BaseCommand):
         user_at_hostname = '{}@{}'.format(settings.EC2_INSTANCE_USERNAME, instance.public_dns_name)
 
         # Copy sqldump to new instance
-        call(['scp', '-o', 'StrictHostKeyChecking=no', '-i', key_file_path, sqldump_name, user_at_hostname])
+        #call(['scp', '-o', 'StrictHostKeyChecking=no', '-i', key_file_path, sqldump_name, user_at_hostname])
+
+        os.system("scp -o StrictHostKeyChecking=no -i {} {} {}:".format(
+            key_file_path, sqldump_name, user_at_hostname
+        ))
+
 
         # Start MySQLd on new instance
-        call(['ssh', '-i', key_file_path, user_at_hostname, '"sudo service mysqld start"'])
+        #call(['ssh', '-i', key_file_path, user_at_hostname, '"sudo service mysqld start"'])
+
+        os.system('ssh -i {} {} "sudo service mysqld start"'.format(key_file_path, user_at_hostname))
 
         # Import sqldump to db on new instance
-        call(['ssh', '-i', key_file_path, user_at_hostname,
-              '"zcat {} | mysql -u{} -p{} {}'.format(sqldump_name, settings.CHILDES_DB_USER,
-                                                     settings.CHILDES_DB_PASSWORD, settings.CHILDES_DB_NAME)])
+        #call(['ssh', '-i', key_file_path, user_at_hostname,
+         #     '"zcat {} | mysql -u{} -p{} {}'.format(sqldump_name, settings.CHILDES_DB_USER,
+          #                                           settings.CHILDES_DB_PASSWORD, settings.CHILDES_DB_NAME)])
+
+        os.system('ssh -i {} {} "zcat {} | mysql -u{} -p{} {}"'.format(
+            key_file_path, user_at_hostname, sqldump_name, settings.CHILDES_DB_USER, settings.CHILDES_DB_PASSWORD,
+            settings.CHILDES_DB_NAME
+        ))
 
         # Send versioned sqldump to S3
         bucket.upload_file(sqldump_name, sqldump_name, ExtraArgs={'ACL': 'public-read'})
@@ -74,4 +97,4 @@ def get_new_db_version(bucket):
     if numbers[1] == '10':
         numbers[1] = '0'
         numbers[0] = str(int(numbers[0]) + 1)
-    return 'childes-db-version-' + '.'.join(numbers) + '.sql.gz'
+    return '.'.join(numbers)
