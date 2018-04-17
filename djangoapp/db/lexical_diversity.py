@@ -54,6 +54,8 @@ def mtld(word_array, ttr_threshold=0.72):
     result = (mtld_calc(word_array, ttr_threshold) + mtld_calc(word_array[::-1], ttr_threshold)) / 2
     if math.isnan(result):
         return 0
+    elif result:
+        return round(result, 2)
     else:
         return result
 
@@ -109,4 +111,9 @@ def hdd(word_array, sample_size=42.0):
         contribution = (1.0 - hypergeometric(len(word_array), sample_size, type_counts[token_type], 0.0)) / sample_size
         hdd_value += contribution
 
-    return hdd_value if not math.isnan(hdd_value) else 0
+    if math.isnan(hdd_value):
+        return 0
+    elif hdd_value:
+        return round(hdd_value, 2)
+    else:
+        return hdd_value

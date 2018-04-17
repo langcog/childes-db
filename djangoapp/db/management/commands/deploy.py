@@ -1,6 +1,5 @@
 import os
 import boto3
-from subprocess import call
 from django.conf import settings
 from django.core.management import BaseCommand, call_command
 from db.models import Admin
@@ -65,15 +64,15 @@ class Command(BaseCommand):
 
         # Start MySQLd on new instance
         #call(['ssh', '-i', key_file_path, user_at_hostname, '"sudo service mysqld start"'])
-
-        os.system('ssh -i {} {} "sudo service mysqld start"'.format(key_file_path, user_at_hostname))
+        # TODO avoid yes / no question for automation
+        os.system('ssh -i {} -o StrictHostKeyChecking=no {} "sudo service mysqld start"'.format(key_file_path, user_at_hostname))
 
         # Import sqldump to db on new instance
         #call(['ssh', '-i', key_file_path, user_at_hostname,
          #     '"zcat {} | mysql -u{} -p{} {}'.format(sqldump_name, settings.CHILDES_DB_USER,
           #                                           settings.CHILDES_DB_PASSWORD, settings.CHILDES_DB_NAME)])
 
-        os.system('ssh -i {} {} "zcat {} | mysql -u{} -p{} {}"'.format(
+        os.system('ssh -i {} -o StrictHostKeyChecking=no {} "zcat {} | mysql -u{} -p{} {}"'.format(
             key_file_path, user_at_hostname, sqldump_name, settings.CHILDES_DB_USER, settings.CHILDES_DB_PASSWORD,
             settings.CHILDES_DB_NAME
         ))
