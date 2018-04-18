@@ -12,6 +12,7 @@
 # removed punctuation -> null translator for compatibility with Python 2 (used string methods from Py 3 only)
 
 import math
+import scipy.special
 
 # MTLD internal implementation
 def mtld_calc(word_array, ttr_threshold):
@@ -65,26 +66,26 @@ def mtld(word_array, ttr_threshold=0.72):
 #  (here, population = N, population_successes = k, sample = n, sample_successes = x)
 #  h(x; N, n, k) = [ kCx ] * [ N-kCn-x ] / [ NCn ]
 def hypergeometric(population, population_successes, sample, sample_successes):
-    return (combination(population_successes, sample_successes) *
-            combination(population - population_successes, sample - sample_successes)) / \
-           combination(population, sample)
+    return (scipy.special.comb(population_successes, sample_successes) *
+            scipy.special.comb(population - population_successes, sample - sample_successes)) / \
+           scipy.special.comb(population, sample)
 
 # x! = x(x-1)(x-2)...(1)
-def factorial(x):
-    if x <= 1:
-        return 1
-    else:
-        return x * factorial(x - 1)
-
-# n choose r = n(n-1)(n-2)...(n-r+1)/(r!)
-def combination(n, r):
-    r_fact = factorial(r)
-    numerator = 1.0
-    num = n-r+1.0
-    while num < n+1.0:
-        numerator *= num
-        num += 1.0
-    return numerator / r_fact
+# def factorial(x):
+#     if x <= 1:
+#         return 1
+#     else:
+#         return x * factorial(x - 1)
+#
+# # n choose r = n(n-1)(n-2)...(n-r+1)/(r!)
+# def combination(n, r):
+#     r_fact = factorial(r)
+#     numerator = 1.0
+#     num = n-r+1.0
+#     while num < n+1.0:
+#         numerator *= num
+#         num += 1.0
+#     return numerator / r_fact
 
 
 # HD-D implementation
