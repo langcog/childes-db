@@ -131,6 +131,9 @@ class Command(BaseCommand):
             except:
                 traceback.print_exc()
 
+        a = numpy.asarray([total_l1, total_l2])
+        numpy.savetxt("freq.csv", a.transpose(), delimiter=",", fmt='%.3e')
+
         coeff = numpy.corrcoef(total_l1, total_l2)[0, 1]
         print coeff
         os.system("echo %s > coeff.txt" % coeff)

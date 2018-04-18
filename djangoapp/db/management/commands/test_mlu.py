@@ -55,7 +55,7 @@ def get_mlu(path, corpus_root):
 
     for code, count in m.iteritems():
         row = TranscriptBySpeaker.objects.filter(transcript=tr, speaker__code=code)
-        if row:
+        if row and count and row[0].mlu:
             l1.append(count)
             l2.append(row[0].mlu)
         else:
@@ -140,6 +140,9 @@ class Command(BaseCommand):
                 total_l2.extend(t2) # would need a map for special subsetting
             except:
                 traceback.print_exc()
+
+        a = numpy.asarray([total_l1, total_l2])
+        numpy.savetxt("mlu.csv", a.transpose(), delimiter=",", fmt='%.3e')
 
         coeff = numpy.corrcoef(total_l1, total_l2)[0, 1]
         print coeff
