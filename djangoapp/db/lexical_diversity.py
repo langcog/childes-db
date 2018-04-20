@@ -14,6 +14,9 @@
 import math
 import scipy.special
 
+import warnings
+warnings.filterwarnings("error")
+
 # MTLD internal implementation
 def mtld_calc(word_array, ttr_threshold):
     current_ttr = 1.0
@@ -56,7 +59,7 @@ def mtld(word_array, ttr_threshold=0.72):
     if math.isnan(result):
         return 0
     elif result:
-        return round(result, 2)
+        return round(result, 3)
     else:
         return result
 
@@ -109,12 +112,18 @@ def hdd(word_array, sample_size=42.0):
     #  type is 1/42 multiplied by the percentage of combinations in which the type would be found." (McCarthy & Jarvis 2010)
     hdd_value = 0.0
     for token_type in type_counts.keys():
-        contribution = (1.0 - hypergeometric(len(word_array), sample_size, type_counts[token_type], 0.0)) / sample_size
+
+        try:
+            hgeo = hypergeometric(len(word_array), sample_size, type_counts[token_type], 0.0)
+        except RuntimeWarning:
+            return 0
+
+        contribution = (1.0 - hgeo) / sample_size
         hdd_value += contribution
 
     if math.isnan(hdd_value):
         return 0
     elif hdd_value:
-        return round(hdd_value, 2)
+        return round(hdd_value, 3)
     else:
         return hdd_value

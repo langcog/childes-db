@@ -5,7 +5,7 @@ import traceback
 import multiprocessing
 
 from django import db
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Sum
 from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
 from lexical_diversity import mtld, hdd
@@ -273,9 +273,11 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
 
         num_utterances = speaker_utterances.count()
-        mlu = speaker_utterances.aggregate(Avg('num_tokens'))['num_tokens__avg']
+        mlu_w = speaker_utterances.aggregate(Avg('num_tokens'))['num_tokens__avg']
         num_types = speaker_tokens.values('gloss').distinct().count()
         num_tokens = speaker_tokens.values('gloss').count()
+        num_morphemes = speaker_utterances.aggregate(Sum('num_morphemes'))['num_morphemes__sum']
+        mlu_m = speaker_utterances.aggregate(Avg('num_morphemes'))['num_morphemes__avg']
 
         TranscriptBySpeaker.objects.create(
             transcript=transcript,
@@ -287,11 +289,13 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             target_child_age=target_child.age if target_child else None,
             target_child_sex=target_child.sex if target_child else None,
             num_utterances=num_utterances,
-            mlu=mlu,
+            mlu_w=mlu_w,
+            mlu_m=mlu_m,
             mtld=mtld(speaker_tokens),
             hdd=hdd(speaker_tokens),
             num_types=num_types,
             num_tokens=num_tokens,
+            num_morphemes=num_morphemes,
             collection=transcript.collection,
             collection_name=transcript.collection.name,
             language = transcript.language

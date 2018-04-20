@@ -29,6 +29,7 @@ class Command(BaseCommand):
         sqldump_name = 'childes-db-version-' + sqldump_version + '.sql.gz'
 
         # Add version to db
+        #TODO duplicate?
         Admin.objects.create(
             version=sqldump_version
         )
@@ -40,9 +41,6 @@ class Command(BaseCommand):
                                          KeyName=settings.EC2_KEY_NAME, MinCount=1, MaxCount=1)[0]
 
         # Create sqldump of local childes-db and zip
-        #call(['mysqldump', '-u', settings.DB_USER, '-p{}'.format(settings.DB_PASSWORD), settings.DB_NAME, '|', 'gzip', '>',
-         #     sqldump_name])
-
         os.system("mysqldump -u{} -p{} {} | gzip > {}".format(
             settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME, sqldump_name
         ))
@@ -55,24 +53,15 @@ class Command(BaseCommand):
         user_at_hostname = '{}@{}'.format(settings.EC2_INSTANCE_USERNAME, instance.public_dns_name)
 
         # Copy sqldump to new instance
-        #call(['scp', '-o', 'StrictHostKeyChecking=no', '-i', key_file_path, sqldump_name, user_at_hostname])
-
         os.system("scp -o StrictHostKeyChecking=no -i {} {} {}:".format(
             key_file_path, sqldump_name, user_at_hostname
         ))
 
-
         # Start MySQLd on new instance
-        #call(['ssh', '-i', key_file_path, user_at_hostname, '"sudo service mysqld start"'])
-        # TODO avoid yes / no question for automation
         os.system('ssh -i {} -o StrictHostKeyChecking=no {} "sudo service mysqld start"'.format(key_file_path, user_at_hostname))
 
         # Import sqldump to db on new instance
-        #call(['ssh', '-i', key_file_path, user_at_hostname,
-         #     '"zcat {} | mysql -u{} -p{} {}'.format(sqldump_name, settings.CHILDES_DB_USER,
-          #                                           settings.CHILDES_DB_PASSWORD, settings.CHILDES_DB_NAME)])
-
-        os.system('ssh -i {} -o StrictHostKeyChecking=no {} "zcat {} | mysql -u{} -p{} {}"'.format(
+        os.system('ssh -i {} -o StrictHostKeyChecking=no {} "zcat {} | sed \'s/datetime(6)/datetime/g\' | mysql -u{} -p{} {}"'.format(
             key_file_path, user_at_hostname, sqldump_name, settings.CHILDES_DB_USER, settings.CHILDES_DB_PASSWORD,
             settings.CHILDES_DB_NAME
         ))
