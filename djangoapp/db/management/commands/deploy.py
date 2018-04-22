@@ -11,13 +11,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
 
         # Drop all tables locally
-        call_command('drop_tables')
+        #call_command('drop_tables')
 
         # Create new tables
-        call_command('migrate')
+        #call_command('migrate')
 
         # Run XML parser and populate local db
-        call_command('populate_db')
+        #call_command('populate_db')
 
         # Connect to S3
         s3 = boto3.resource('s3')
@@ -29,7 +29,7 @@ class Command(BaseCommand):
         sqldump_name = 'childes-db-version-' + sqldump_version + '.sql.gz'
 
         # Add version to db
-        #TODO duplicate?
+        #TODO increment differently
         Admin.objects.create(
             version=sqldump_version
         )
@@ -41,7 +41,7 @@ class Command(BaseCommand):
                                          KeyName=settings.EC2_KEY_NAME, MinCount=1, MaxCount=1)[0]
 
         # Create sqldump of local childes-db and zip
-        os.system("mysqldump -u{} -p{} {} | gzip > {}".format(
+        os.system("mysqldump -u{} -p{} {} | sed \'s/datetime(6)/datetime/g\' | gzip > {}".format(
             settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME, sqldump_name
         ))
 
@@ -61,7 +61,7 @@ class Command(BaseCommand):
         os.system('ssh -i {} -o StrictHostKeyChecking=no {} "sudo service mysqld start"'.format(key_file_path, user_at_hostname))
 
         # Import sqldump to db on new instance
-        os.system('ssh -i {} -o StrictHostKeyChecking=no {} "zcat {} | sed \'s/datetime(6)/datetime/g\' | mysql -u{} -p{} {}"'.format(
+        os.system('ssh -i {} -o StrictHostKeyChecking=no {} "zcat {} | mysql -u{} -p{} {}"'.format(
             key_file_path, user_at_hostname, sqldump_name, settings.CHILDES_DB_USER, settings.CHILDES_DB_PASSWORD,
             settings.CHILDES_DB_NAME
         ))
