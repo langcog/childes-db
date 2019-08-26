@@ -12,7 +12,13 @@ class Command(BaseCommand):
 
     # A command must define handle()
     def handle(self, *args, **options):
+
+        #try:
         from db.childes_db import populate_db
+        #except Exception as e:
+        #    print(e.args)
+        #    import pdb
+        #    pdb.set_trace()        
 
         collection = options.get("collection")
 

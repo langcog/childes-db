@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/1.11/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/1.11/ref/settings/
 """
-
+import logging
 import os
 import json
 
@@ -27,17 +27,17 @@ DB_PORT = config['mysql']['DB_PORT']
 
 DATA_XML_PATH = config['data']['DATA_XML_PATH']
 
-S3_BUCKET_NAME = config['AWS']['S3_BUCKET_NAME']
-EC2_AMI_ID = config['AWS']['EC2_AMI_ID']
-EC2_INSTANCE_TYPE = config['AWS']['EC2_INSTANCE_TYPE']
-EC2_SECURITY_GROUP_ID = config['AWS']['EC2_SECURITY_GROUP_ID']
-EC2_KEY_NAME = config['AWS']['EC2_KEY_NAME']
-EC2_INSTANCE_USERNAME = config['AWS']['EC2_INSTANCE_USERNAME']
-AWS_FOLDER_PATH = config['AWS']['AWS_FOLDER_PATH']
+# S3_BUCKET_NAME = config['AWS']['S3_BUCKET_NAME']
+# EC2_AMI_ID = config['AWS']['EC2_AMI_ID']
+# EC2_INSTANCE_TYPE = config['AWS']['EC2_INSTANCE_TYPE']
+# EC2_SECURITY_GROUP_ID = config['AWS']['EC2_SECURITY_GROUP_ID']
+# EC2_KEY_NAME = config['AWS']['EC2_KEY_NAME']
+# EC2_INSTANCE_USERNAME = config['AWS']['EC2_INSTANCE_USERNAME']
+# AWS_FOLDER_PATH = config['AWS']['AWS_FOLDER_PATH']
 
-CHILDES_DB_USER = config['childes-db']['CHILDES_DB_USER']
-CHILDES_DB_NAME = config['childes-db']['CHILDES_DB_NAME']
-CHILDES_DB_PASSWORD = config['childes-db']['CHILDES_DB_PASSWORD']
+# CHILDES_DB_USER = config['childes-db']['CHILDES_DB_USER']
+# CHILDES_DB_NAME = config['childes-db']['CHILDES_DB_NAME']
+# CHILDES_DB_PASSWORD = config['childes-db']['CHILDES_DB_PASSWORD']
 
 
 # Quick-start development settings - unsuitable for production
@@ -47,7 +47,7 @@ CHILDES_DB_PASSWORD = config['childes-db']['CHILDES_DB_PASSWORD']
 SECRET_KEY = '5x*#2@!-ie==%l4l&1-+4gcetba-w1be8b6c@o#z=)7qfbrjd&'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = []
 
@@ -149,3 +149,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
 STATIC_URL = '/static/'
+
+
+SILENCED_SYSTEM_CHECKS = ["numpy.ufunc size changed"]

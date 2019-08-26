@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # CHILDES XML Corpus Reader
 
 # Copyright (C) 2001-2012 NLTK Project
@@ -11,11 +12,14 @@ Corpus reader for the XML version of the CHILDES corpus.
 """
 __docformat__ = 'epytext en'
 
-import re
+import re   
 from collections import defaultdict
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+#warnings.warn = lambda *a, **kw: False
 
 from nltk.util import flatten
-
 from nltk.corpus.reader.util import concat
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
 
@@ -191,10 +195,10 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     age = pat.get('age')
                     if month:
                         age = self.convert_age(age)
-                    return age
+                    return(age)
             # some files don't have age data
-            except (TypeError, AttributeError), e:
-                return None
+            except:
+                return(None)
 
     def sex(self, fileids=None, speaker='CHI'):
         """
@@ -215,7 +219,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     sex = pat.get('sex')
                     return sex
             # some files don't have age data
-            except (TypeError, AttributeError), e:
+            except:
                 return None
 
     def convert_age(self, age_year):
@@ -226,7 +230,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
             if int(m.group(3)) > 15:
                 age_month += 1
         # some corpora don't have age information?
-        except ValueError, e:
+        except:
             pass
         return age_month
 
@@ -341,7 +345,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
             if len(xmlpos) != 1 and suffixStem:
                 suffixStem = (suffixStem, xmlpos[1].text)
                 pos += ' ' + xmlpos[1].text  # POS of suffix
-        except (AttributeError, IndexError), e:
+        except:
             pass
             # we don't really do anyting with below vars...
             # word = (word, None)
@@ -415,7 +419,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
             # word = xmlstem.text
             # replaces word with stem, instead add to map
             stem = xmlstem.text
-        except AttributeError, e:
+        except:
             pass
         # if there is an inflection
         try:
@@ -524,7 +528,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     word = xmlword.text
                     token['gloss'] = xmlword.text.strip()
                 else:
-                    print 'empty word in sentence %s' % sentID
+                    print('empty word in sentence '+ str(sentID))
                     word = ''
                     token['gloss'] = ''
 
@@ -668,7 +672,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     if xmlword.text:
                         word = xmlword.text
                     else:
-                        print 'empty word in sentence %s' % sentID
+                        print('empty word in sentence '+str(sentID))
                         word = ''
 
                     # strip tailing space
@@ -680,7 +684,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                         try:
                             xmlstem = xmlword.find('.//{%s}stem' % NS)
                             word = xmlstem.text
-                        except AttributeError, e:
+                        except:
                             pass
                         # if there is an inflection
                         try:
@@ -703,7 +707,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                             word = (word,xmlpos[0].text)
                             if len(xmlpos) != 1 and suffixStem:
                                 suffixStem = (suffixStem,xmlpos[1].text)
-                        except (AttributeError,IndexError), e:
+                        except:
                             word = (word,None)
                             if suffixStem:
                                 suffixStem = (suffixStem,None)
@@ -808,7 +812,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         url = self.childes_url_base + path
 
         webbrowser.open_new_tab(url)
-        print "Opening in browser:", url
+        print("Opening in browser: "+url)
         # Pausing is a good idea, but it's up to the user...
         # raw_input("Hit Return to continue")
 
@@ -832,32 +836,32 @@ def demo(corpus_root=None):
             for (key,value) in childes.corpus(file)[0].items():
                 if key == "Corpus": corpus = value
                 if key == "Id": corpus_id = value
-            print 'Reading', corpus,corpus_id,' .....'
-            print "words:", childes.words(file)[:7],"..."
-            print "words with replaced words:", childes.words(file, replace=True)[:7]," ..."
-            print "words with pos tags:", childes.tagged_words(file)[:7]," ..."
-            print "words (only MOT):", childes.words(file, speaker='MOT')[:7], "..."
-            print "words (only CHI):", childes.words(file, speaker='CHI')[:7], "..."
-            print "stemmed words:", childes.words(file, stem=True)[:7]," ..."
-            print "words with relations and pos-tag:", childes.words(file, relation=True)[:5]," ..."
-            print "sentence:", childes.sents(file)[:2]," ..."
-            for (participant, values) in childes.participants(file)[0].items():
-                    for (key, value) in values.items():
-                        print "\tparticipant", participant, key, ":", value
-            print "num of sent:", len(childes.sents(file))
-            print "num of morphemes:", len(childes.words(file, stem=True))
-            print "age:", childes.age(file)
-            print "age in month:", childes.age(file, month=True)
-            print "MLU:", childes.MLU(file)
-            print
+            #print('Reading '+corpus,corpus_id+' .....')
+            # print "words:", childes.words(file)[:7],"..."
+            # print "words with replaced words:", childes.words(file, replace=True)[:7]," ..."
+            # print "words with pos tags:", childes.tagged_words(file)[:7]," ..."
+            # print "words (only MOT):", childes.words(file, speaker='MOT')[:7], "..."
+            # print "words (only CHI):", childes.words(file, speaker='CHI')[:7], "..."
+            # print "stemmed words:", childes.words(file, stem=True)[:7]," ..."
+            # print "words with relations and pos-tag:", childes.words(file, relation=True)[:5]," ..."
+            # print "sentence:", childes.sents(file)[:2]," ..."
+            # for (participant, values) in childes.participants(file)[0].items():
+            #         for (key, value) in values.items():
+            #             print "\tparticipant", participant, key, ":", value
+            # print "num of sent:", len(childes.sents(file))
+            # print "num of morphemes:", len(childes.words(file, stem=True))
+            # print "age:", childes.age(file)
+            # print "age in month:", childes.age(file, month=True)
+            # print "MLU:", childes.MLU(file)
+            # print
 
-    except LookupError, e:
-        print """The CHILDES corpus, or the parts you need, should be manually
+    except:
+        print("""The CHILDES corpus, or the parts you need, should be manually
         downloaded from http://childes.psy.cmu.edu/data-xml/ and saved at
         [NLTK_Data_Dir]/corpora/childes/
             Alternately, you can call the demo with the path to a portion of the CHILDES corpus, e.g.:
         demo('/path/to/childes/data-xml/Eng-USA/")
-        """
+        """)
         #corpus_root_http = urllib2.urlopen('http://childes.psy.cmu.edu/data-xml/Eng-USA/Bates.zip')
         #corpus_root_http_bates = zipfile.ZipFile(cStringIO.StringIO(corpus_root_http.read()))
         ##this fails

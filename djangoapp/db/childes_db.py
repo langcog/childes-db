@@ -1,15 +1,17 @@
+#!/usr/bin/env python
 import re
 import os
 import logging
+import warnings
 import traceback
 import multiprocessing
 
 from django import db
 from django.db.models import Avg, Count, Sum
-from models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
-from lexical_diversity import mtld, hdd
-from childes import CHILDESCorpusReader
+from db.lexical_diversity import mtld, hdd
+from db.childes import CHILDESCorpusReader
 
 
 def populate_db(collection_root, selected_collection=None):
@@ -21,7 +23,7 @@ def populate_db(collection_root, selected_collection=None):
     pool = multiprocessing.Pool()
     results = []
 
-    for collection_name in os.walk(collection_root).next()[1]:
+    for collection_name in next(os.walk(collection_root))[1]:
 
         if selected_collection and collection_name != selected_collection:
             continue
@@ -29,19 +31,19 @@ def populate_db(collection_root, selected_collection=None):
         collection = Collection.objects.create(name=collection_name)
         corpus_root = os.path.join(collection_root, collection_name)
 
-        print "\nCollection: {}".format(collection_name)
+        print("\nCollection: "+collection_name)
 
-        if os.walk(corpus_root).next()[2]:
+        if next(os.walk(corpus_root))[2]:
             # corpora in here (i.e. *.zip files present)
             results += crawl_corpora(corpus_root, collection, pool)
         else:
             # go past subdirectories (i.e. Korea, Indonesian, etc.)
-            for dir in os.walk(corpus_root).next()[1]:
+            for dir in next(os.walk(corpus_root))[1]:
                 results += crawl_corpora(corpus_root + "/" + dir, collection, pool)
 
     pool.close()
 
-    # catch any exceptions thrown by child processes
+    # catch any exceptions thrown by child processes    
     for result in results:
         try:
             result.get()
@@ -51,8 +53,8 @@ def populate_db(collection_root, selected_collection=None):
 
 def crawl_corpora(corpus_root, collection, pool):
     results = []
-    for corpus_name in os.walk(corpus_root).next()[1]:
-        print corpus_name
+    for corpus_name in next(os.walk(corpus_root))[1]:
+        print(corpus_name)
 
         nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
         corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
@@ -325,7 +327,7 @@ def extract_target_child(participants):
     nltk_target_child = None
     code_to_pop = None
 
-    for code, nltk_participant in participants.iteritems():
+    for code, nltk_participant in participants.items():
         # TODO use code = CHI as well
         if nltk_participant.get('role') == 'Target_Child':
             if nltk_target_child:
