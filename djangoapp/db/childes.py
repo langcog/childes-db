@@ -507,7 +507,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
                 suffixStem = None
 
-                xstr = lambda s: "" if s is None else unicode(s)
+                #xstr = lambda s: "" if s is None else unicode(s)                
+                xstr = lambda s: "" if s is None else s
 
                 if xmlword.find('.//{%s}langs' % (NS)):
                     xmlword.text = xmlword.find('.//{%s}langs' % (NS)).tail

@@ -13,7 +13,19 @@ from db.models import Collection, Transcript, Participant, Utterance, Token, Cor
 from db.lexical_diversity import mtld, hdd
 from db.childes import CHILDESCorpusReader
 
+import functools
 
+def trace_unhandled_exceptions(func):
+    @functools.wraps(func)
+    def wrapped_func(*args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except:
+            print('Exception in '+func.__name__)
+            traceback.print_exc()
+    return(wrapped_func)
+
+@trace_unhandled_exceptions
 def populate_db(collection_root, selected_collection=None):
 
     multiprocessing.log_to_stderr()
@@ -23,10 +35,9 @@ def populate_db(collection_root, selected_collection=None):
     pool = multiprocessing.Pool()
     results = []
 
-    for collection_name in next(os.walk(collection_root))[1]:
-
+    for collection_name in next(os.walk(collection_root))[1]:       
         if selected_collection and collection_name != selected_collection:
-            continue
+            continue # skip it if it isn't the selected collection        
 
         collection = Collection.objects.create(name=collection_name)
         corpus_root = os.path.join(collection_root, collection_name)
@@ -43,19 +54,22 @@ def populate_db(collection_root, selected_collection=None):
 
     pool.close()
 
-    # catch any exceptions thrown by child processes    
+    # catch any exceptions thrown by child processes        
     for result in results:
         try:
             result.get()
         except:
             traceback.print_exc()
 
+    #import pdb
+    #pdb.set_trace()
 
+@trace_unhandled_exceptions
 def crawl_corpora(corpus_root, collection, pool):
     results = []
     for corpus_name in next(os.walk(corpus_root))[1]:
         print(corpus_name)
-
+        
         nltk_corpus = CHILDESCorpusReader(corpus_root, corpus_name + '/.*.xml')
         corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
 
@@ -75,7 +89,8 @@ def crawl_corpora(corpus_root, collection, pool):
 
             # Create utterance and token objects asynchronously
             results.append(pool.apply_async(process_utterances, args=(nltk_corpus, fileid, transcript, participants,
-                                                                      target_child)))
+                target_child)))
+
     return results
 
 
