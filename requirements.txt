@@ -1,7 +1,7 @@
 Django==1.11.23
 django-extensions==2.2.1
 mysqlclient==1.4.4
-nltk==3.2.4
+nltk==3.4.5
 numpy==1.17.0
 pathlib==1.0.1
 pytz==2019.2
