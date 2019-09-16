@@ -1,0 +1,12 @@
+Django==1.11.23
+django-extensions==2.2.1
+joblib==0.13.2
+mysqlclient==1.4.4
+nltk==3.2.4
+numpy==1.17.0
+pathlib==1.0.1
+pytz==2019.2
+scipy==1.3.1
+six==1.12.0
+sqlparse==0.3.0
+typing==3.7.4.1

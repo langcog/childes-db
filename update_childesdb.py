@@ -1,101 +1,81 @@
-# running on a cron job on Lovelace:
 import os
-#os.chdir('/home/stephan/notebooks/childes-db')
 import time
 import datetime
 import json
-
-import email_notifications
 import config
 import wget
-reload(config)
 import subprocess
+import argparse
+import numpy as np
 
-date = datetime.datetime.now().strftime("%Y-%m-%d")
+# download and unzip the directory structure that can be used as the input for the populate_db management command
+# version_dir: root of the new CHILDES tree
+# version_dir/candidate: root for the XML files
+# version_dir/logs: logs for the pre-processing
 
-for collection in config.collections:
-	#collection = config.collections[0]	
-	new_db_name = 'childes-db_'+collection+'_'+date	
-	print('Generating '+new_db_name)
+# example invocation: python update_childesdb.py --versions_root /shared_hd2/childes-db-xml --version 2019.1 --base_url https://childes.talkbank.org/data-xml/
 
-	#print('Generating path structure...')
-	if not os.path.isdir(os.path.join(config.version_dir, collection)):
-		os.mkdir(os.path.join(config.version_dir, collection))
-	collection_version_dir = os.path.join(config.version_dir, collection, date)
-	if not os.path.isdir(collection_version_dir):
-		os.mkdir(collection_version_dir)	
+parser = argparse.ArgumentParser()
+parser.add_argument("--versions_root", help='root to place all updates')
+parser.add_argument("--version", help='version string for the new dataset')
+parser.add_argument("--base_url", help='URL of the xml root directory from CHILDES')
+args = parser.parse_args()
+
+# set up some paths and directories
+paths = {}
+paths['versions_root'] = args.versions_root
+paths['version'] = os.path.join(args.versions_root, args.version)
+paths['candidate'] = os.path.join(args.versions_root, args.version,'candidate')
+paths['logs'] = os.path.join(args.versions_root, args.version,'logs')
+
+for dir_path in paths.values():
+	if not os.path.exists(dir_path):  
+		os.makedirs(dir_path)
+
+paths['wget_log'] = os.path.join(paths['logs'],'wget.log')
+
+
+
+print('Downloading zip files with xml transcripts from the CHILDES website...')
+wget_command = "wget -N -r -np -A.zip -o "+paths['wget_log']+" -e robots=off " + args.base_url	
+# -N checks for server-side changes and does not download if no changes
+# -r looks recursive
+# -np no parent
+# -A.zip limits to zip files
+# -e robots=off: disregards robots.txt
+
+try:
+	os.system('cd '+ paths['candidate'] +' && ' + wget_command)
+
+	# parse the output to wget to see if anything has changed
+	wget_responses = wget.parse_wget_output(paths['wget_log'])
+except Exception as e:
+	print('Problem with downloading....')
+	print(e)
+	#email.alert(subject=download_failure_subject_message, log_path)	
+
+
+print('Unzipping the zip files...')
+
+dirs_with_zipfiles = []
+for root, dirs, files in os.walk(paths['candidate']):
+    for file in files:
+        if file.endswith(".zip"):
+        	dirs_with_zipfiles.append(root)
+
+dirs_with_zipfiles = np.unique(dirs_with_zipfiles) # avoid redundancy
+for dir_with_zipfiles in dirs_with_zipfiles:
+	unzip_command = "cd "+ dir_with_zipfiles +" && unzip '*.zip' && rm *.zip"	
+	os.system(unzip_command)
+
+
+new_data_dir = os.path.join(paths['candidate'], 'childes.talkbank.org/data-xml')
+
+print('After migrating (`python manage.py makemigrations`; `python manage.py migrate`), you are ready to run `python migrate.py populate_db` from djangoapp, after updating DATA_XML_PATH in config.JSON to point to '+new_data_dir)	
 	
-	# collection_candidate_dir = os.path.join(config.candidate_dir, collection)
-	# if not os.path.isdir(collection_candidate_dir):
-	# 	os.mkdir(collection_candidate_dir)
-	log_path = os.path.join(collection_version_dir,'log')
-	if not os.path.isdir(log_path):
-		os.mkdir(log_path)
-	wget_log_path = os.path.join(log_path, 'wget.log')		
-
-	collection_url = config.xml_url + collection + '/'
-
-	print('Updating local copy ("candidate") from CHILDES')
-	os.chdir(config.candidate_dir)
-
-	wget_command = "wget -N -r -np -A.zip -o "+wget_log_path+" -e robots=off " + collection_url	
-	try:
-		os.system('cd '+ config.candidate_dir +' && ' + wget_command)
-
-		# parse the output to wget to see if anything has changed
-		wget_responses = wget.parse_wget_output(wget_log_path)
-	except:
-		#email.alert(subject=download_failure_subject_message, log_path)	
-
-	if len(wget_responses) == 0 and not config.forceUpdate:
-		print('None of the transcripts have changed. Sending and email.')
-		#email.alert(subject=noop_subject_message,log_path='!!!')
-	else:	
-		if forceUpdate:
-			print('Regenerating because forceUpdate is set to true in the configuration file')
-		else:	
-			print('At least one of the transcripts has changed, updating the database...')
-
-		try:						
-			print('Copying from candidate to version directory')
-			copy_command = 'cp '+config.candidate_dir+'/childes.talkbank.org/data-xml/'+collection+'/* ' + collection_version_dir
-			os.system(copy_command)
-			
-			print('Unzipping in version directory')
-			unzip_command = "cd "+ collection_version_dir +" && unzip '*.zip' && rm *.zip"
-			os.system(unzip_command)
-			
-			migrate_log = os.path.join(log_path, 'migrate.log')
-					
-			# update the Django settings JSON so that the migration will connect to a new database
-
-			config_json_path = os.path.join(config.code_dir, 'djangoapp', 'config.json')
-			with open(config_json_path) as json_data:
-    			config_json = json.load(json_data)	
-
-
-    		config_json['mysql']['DB_NAME']= new_db_name	
-
-    		with open(config_json_path, 'w') as outfile:
-    			json.dump(config_json, outfile)
-
-			# requires subprocess to activate the venv
-			subprocess.Popen([os.path.join(config.code_dir, "childesdb/bin/python"), os.path.join(config.code_dir, 'djangoapp',"manage.py"), "migrate", "--collection", collection, "--path", collection_version_dir])
 	
-			#!!! this fails	
+	
 
-			#then propagate this to the remote machine; need to have SSH + EC2 credentials
-			# could create a new instance through the EC2 CLI
-			# get it to the production database
-			# see Boto
 
-			# do a remote sql dump into the Apache version running on the remote
-			remote_serve_collection_dir = os.path.join(remote_serve_dir, collection version)
-			#dump_command = 'sqldump #name# > ' + remote_serve_collection_dir
-			#!!! or this is a remote command to dump and upload to S3 or Glacier
-			os.system(dump_command)
 
-			#email.alert(subject=success_subject_message, log_path)
-		except: 
-			#email.alert(subject=processing_failure_subject_message, log_path)
-			pass
+	
