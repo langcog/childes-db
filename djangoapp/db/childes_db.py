@@ -21,7 +21,7 @@ from db.childes import CHILDESCorpusReader
 import functools
 import numpy as np
 import sys
-import pdb
+import time
 
 def trace_unhandled_exceptions(func):
     @functools.wraps(func)
@@ -33,8 +33,9 @@ def trace_unhandled_exceptions(func):
             traceback.print_exc()
     return(wrapped_func)
 
-def populate_db(collection_root, selected_collection=None, parallelize=False):    
+def populate_db(collection_root, selected_collection=None, parallelize=True):    
 
+    populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()
     logger = multiprocessing.get_logger()
     logger.setLevel(logging.INFO)
@@ -58,7 +59,9 @@ def populate_db(collection_root, selected_collection=None, parallelize=False):
         except:
             traceback.print_exc()
 
-def process_collection(collection_root, collection_name, pool, parallelize=False):
+    print('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
+
+def process_collection(collection_root, collection_name, pool, parallelize=True):
     
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
@@ -129,19 +132,20 @@ def process_corpus(corpus_root, corpus_name, collection_name):
     dirs_with_xml = np.unique(dirs_with_xml)
 
     print('('+corpus_name+') Number of sub-directories in corpus: '+str(len(dirs_with_xml)))
-
+    
+    corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
+    # here, creating a corpus for every subdirectory -- this is not right
+    
     for dir_with_xml in dirs_with_xml:
-
         print('('+corpus_name+') Processing XML directory: '+dir_with_xml)
-        
-        nltk_corpus = CHILDESCorpusReader(dir_with_xml, '.*.xml')        
-        corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
 
+        nltk_corpus = CHILDESCorpusReader(dir_with_xml, '.*.xml')        
+        
         # Iterate over all transcripts in this corpus        
         for fileid in nltk_corpus.fileids():
 
             # Create transcript and participant objects up front
-            transcript, participants, target_child = create_transcript_and_participants(nltk_corpus, fileid, corpus,
+            transcript, participants, target_child = create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus,
                                                                                         collection)
 
             # Ignore old filenames (due to recent update)
@@ -170,7 +174,7 @@ def flatten_list(hierarchical_list, list_name = None):
 
     return([item for sublist in hierarchical_list for item in sublist if item is not None])
 
-def create_transcript_and_participants(nltk_corpus, fileid, corpus, collection):
+def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection):
     
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
@@ -182,8 +186,13 @@ def create_transcript_and_participants(nltk_corpus, fileid, corpus, collection):
     if Transcript.objects.filter(pid=pid).exists():
         return None, None, None
 
+    # check the whether os.path.join(corpus, fileId) is what we expect
+
+    path_components = os.path.normpath(os.path.join(dir_with_xml, fileid)).split(os.sep)
+    short_path = '/'.join(path_components[path_components.index(corpus.name)-1::])
+
     transcript = Transcript.objects.create(
-        filename=fileid,
+        filename=short_path,
         corpus=corpus,
         corpus_name=corpus.name,
         language=metadata.get('Lang'),
@@ -447,7 +456,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
     #bulk_write(TokenFrequency_store, 'TokenFrequency', transcript.corpus.name, batch_size=1000)
     TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
     TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
-    print("("+transcript.corpus_name+'/'+transcript.filename+") TrasncriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
+    print("("+transcript.corpus_name+'/'+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
 
     return('success')
     

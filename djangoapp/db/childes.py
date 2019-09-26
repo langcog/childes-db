@@ -502,7 +502,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
                 token = {}
 
-                if xmlword.get('type') == 'omission':
+                if xmlword.get('type') == 'omission':                    
                     continue
 
                 suffixStem = None
@@ -646,7 +646,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
             if speaker == 'ALL' or xmlsent.get('who') in speaker:
                 for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
-                    if xmlword.get('type') == 'omission':
+                    if xmlword.get('type') == 'omission':                        
+                        # is this a 0-marked token?
                         continue
 
                     infl = None ; suffixStem = None
