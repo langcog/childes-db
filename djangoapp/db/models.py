@@ -16,6 +16,7 @@ class Corpus(Model):
     name = CharField(max_length=255, blank=True, default=None, null=True) # simple name
     collection = ForeignKey(Collection, blank=True, null=True, default=None, on_delete=DO_NOTHING)
     collection_name = CharField(max_length=255, blank=True, default=None, null=True)
+    source = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -67,6 +68,8 @@ class Transcript(Model):
 class Utterance(Model):
     gloss = TextField(blank=True, default=None, null=True)
     stem = TextField(blank=True, default=None, null=True)
+    pho = TextField(db_index=True, blank=True, default=None, null=True)
+    mod = TextField(db_index=True, blank=True, default=None, null=True)
     type = CharField(max_length=255, blank=True, default=None, null=True)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None, on_delete=DO_NOTHING)
     language = CharField(max_length=255, blank=True, default=None, null=True)
@@ -106,6 +109,8 @@ class Token(Model):
     prefix = CharField(max_length=255, blank=True, default=None, null=True)
     part_of_speech = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     stem = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    pho = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    mod = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     suffix = CharField(max_length=255, blank=True, default=None, null=True)
     num_morphemes = IntegerField(blank=True, null=True, default=None)
     english = CharField(max_length=255, blank=True, default=None, null=True)
@@ -186,4 +191,3 @@ class Admin(Model):
 
 for model_class in (Token, Utterance, TokenFrequency, TranscriptBySpeaker, Admin, Transcript, Participant, Corpus, Collection):
     globals()[model_class] = model_class
-
