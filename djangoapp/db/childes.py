@@ -18,6 +18,7 @@ import warnings
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 #warnings.warn = lambda *a, **kw: False
+import copy
 
 from nltk.util import flatten
 from nltk.corpus.reader.util import concat
@@ -25,6 +26,12 @@ from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
 
 # to resolve the namespace issue
 NS = 'http://www.talkbank.org/ns/talkbank'
+
+from xml.dom import minidom
+def prettify(ET, fname):
+    xmlstr = minidom.parseString(ET.tostring(root)).toprettyxml(indent="   ")
+    with open(fname, "w") as f:
+        f.write(xmlstr)
 
 class CHILDESCorpusReader(XMLCorpusReader):
     """
@@ -444,6 +451,14 @@ class CHILDESCorpusReader(XMLCorpusReader):
         tree = ElementTree.parse(fileid)
         xmldoc = tree.getroot()
 
+        # check if this file has phonological transcriptions        
+        if xmldoc.find('.//{%s}pw' % NS) is not None:
+            fileHasPhonology = True
+            print('File has phonological transcripts. Processing...')
+        else:
+            fileHasPhonology = False
+            print('File has no phonological transcripts. Skipping extraction of phonological information.')
+
         results2 = []
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
 
@@ -481,6 +496,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 annotations.append(annotation)
 
             utt += (annotations,)
+            # does this capture the phonetic tier?
 
             # extract media info, if it exists
             media = {}
@@ -492,6 +508,17 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 media['unit'] = media_element[0].attrib['unit']
 
             utt += (media,)
+
+
+            # Pull out the phonology tiers
+            if fileHasPhonology:
+                actual_pho, model_pho = get_phonology(xmlsent, speaker, sentID)
+                num_tokens = len(xmlsent.findall('.//{%s}w' % NS))
+                include_actual_pho = num_tokens == len(actual_pho)
+                include_model_pho = num_tokens == len(model_pho)
+            else:
+                actual_pho = []
+                model_pho = []
 
             for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
@@ -531,8 +558,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 else:
                     print('empty word in sentence '+ str(sentID))
                     word = ''
-                    token['gloss'] = ''
-
+                    token['gloss'] = ''    
 
                 # check if this is a replacement, and then build rep, stem, etc from children
                 if xmlword.find('.//{%s}replacement' % (NS)):
@@ -625,11 +651,28 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 token_order += 1
                 token['order'] = token_order
 
-                # sents.append(word)
+                # only include the phonetic information at the word level if it aligns with the set of words
+                if fileHasPhonology:
+                    if include_actual_pho:
+                        token['pho'] = actual_pho[(token_order -1)]
+                    else:
+                        # mismatch in actual_pho and utterance length; not including actual pho at the word level
+                        token['pho'] = ''
+                        
+                    if include_model_pho:
+                        token['mod'] = model_pho[(token_order -1)]
+                    else: 
+                        # mismatch in model_pho and utterance length; not including model pho at the word level
+                        token['mod'] = ''
+                else:
+                    # whole file does not have phonology
+                    token['pho'] = ''
+                    token['mod'] = ''
+
                 tokens.append(token)
                 # if suffixStem:
                 #     sents.append(suffixStem)
-            results2.append(utt + (tokens,))
+            results2.append(utt + (tokens,) + (actual_pho,) + (model_pho,))
         return results2
 
     def _get_words(self, fileid, speaker, sent, stem, relation, pos,
@@ -747,7 +790,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                                                   + "|" + xmlpost_rel.get('head')
                                                   + "|" + xmlpost_rel.get('relation'))
                         except:
-                            pass
+                            pass                    
                     sents.append(word)
                     if suffixStem:
                         sents.append(suffixStem)
@@ -818,6 +861,39 @@ class CHILDESCorpusReader(XMLCorpusReader):
         # Pausing is a good idea, but it's up to the user...
         # raw_input("Hit Return to continue")
 
+def get_phonology(xmlsent, speaker_code, sentID):
+
+    actual_pho = [] #initial value
+    model_pho = [] #initial value
+
+    actual_words = xmlsent.findall('.//{%s}pg/{%s}actual/{%s}pw' % (NS, NS, NS))
+    model_words = xmlsent.findall('.//{%s}pg/{%s}model/{%s}pw' % (NS, NS, NS))
+
+    words = [x.text for x in xmlsent.findall('.//{%s}w' % NS)]
+    words = [x for x in words if x is not None]
+
+    diagnostic_info = '"'+' '.join(words)+'" ('+str(sentID)+')'
+
+    if (len(actual_words) > 0) and (speaker_code != 'CHI'):   
+        print('Actual phonology tier is populated for a non child speaker! '+diagnostic_info)
+
+    # Prep the phonology in preparation to merge back in when tokens are ready
+    if (len(actual_words) == 0) and (speaker_code == 'CHI'):
+        if len(xmlsent.findall('.//{%s}actual' % NS)) > 0:
+            print('Pho tier was found in a weird place! '+diagnostic_info)
+            import pdb
+            pdb.set_trace()
+            #[ ] are there instances where phonology is embedded at a different level?
+        else:
+            
+            if not 'xxx' in words: #cut down on logging
+                print("No 'actual' phonetic transcript! " + diagnostic_info)
+            
+    if len(actual_words) > 0:
+        actual_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in actual_words]
+        model_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in model_words]        
+
+    return(actual_pho, model_pho)
 
 
 def demo(corpus_root=None):

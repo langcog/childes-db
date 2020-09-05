@@ -17,6 +17,7 @@ import db.models
 
 from db.lexical_diversity import mtld, hdd
 from db.childes import CHILDESCorpusReader
+from db.childes import get_phonology
 
 import functools
 import numpy as np
@@ -33,7 +34,7 @@ def trace_unhandled_exceptions(func):
             traceback.print_exc()
     return(wrapped_func)
 
-def populate_db(collection_root, selected_collection=None, parallelize=True):    
+def populate_db(collection_root, selected_collection=None, parallelize=False):    
 
     populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()
@@ -57,13 +58,16 @@ def populate_db(collection_root, selected_collection=None, parallelize=True):
         try:
             result.get()
         except:
+            print('Issue getting results!')
+            import pdb
+            pdb.set_trace()
             traceback.print_exc()
 
     print('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
 
-def process_collection(collection_root, collection_name, pool, parallelize=True):
+def process_collection(collection_root, collection_name, pool, parallelize):
     
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+    from db.models import Collection
 
     print('Processing collection '+collection_name+' at '+os.path.join(collection_root, collection_name))    
     t0 = time.time()
@@ -78,15 +82,7 @@ def process_collection(collection_root, collection_name, pool, parallelize=True)
 
     # apply_async
     for corpus_name in top_level_corpora_in_collection:
-        
-        
-        if parallelize:
-            # multicore
-            results.append(pool.apply_async(process_corpus, args =(os.path.join(collection_root, collection_name), corpus_name, collection_name)))
-        
-        else:
-            # single core for debugging
-            results.append(process_corpus(os.path.join(collection_root, collection_name), corpus_name, collection_name))
+        results.append(process_corpus(os.path.join(collection_root, collection_name), corpus_name, collection_name, pool, parallelize))
 
 
     # catch any exceptions thrown by child processes            
@@ -110,11 +106,9 @@ def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
     print('('+corpus_name+') Bulk write for '+data_type+' took '+str(round(time.time() - bulk_write_start_time, 3)))+'s'
 
         
-def process_corpus(corpus_root, corpus_name, collection_name):
-    
-    import django
-    django.setup()
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+def process_corpus(corpus_root, corpus_name, collection_name, pool, parallelize=True):
+
+    from db.models import Collection, Corpus
 
     # retrieve the Collection from within the process so we don't need to pass the Django ORM object, which is unpickleable
     collection = Collection.objects.get(name = collection_name)
@@ -122,7 +116,7 @@ def process_corpus(corpus_root, corpus_name, collection_name):
 
     print('Processing corpus '+corpus_name+' at '+corpus_path)
 
-    process_utterance_results = []
+    processed_file_results = []
 
     dirs_with_xml = []
     for root, dirs, files in os.walk(os.path.join(corpus_root, corpus_name)):
@@ -142,28 +136,42 @@ def process_corpus(corpus_root, corpus_name, collection_name):
         nltk_corpus = CHILDESCorpusReader(dir_with_xml, '.*.xml')        
         
         # Iterate over all transcripts in this corpus        
+        
         for fileid in nltk_corpus.fileids():
 
-            # Create transcript and participant objects up front
-            transcript, participants, target_child = create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus,
-                                                                                        collection)
 
-            # Ignore old filenames (due to recent update)
-            if not transcript:
-                continue
-
-            # necessary so child process doesn't inherit file descriptor
-            #db.connections.close_all()
-
-            # Create utterance and token objects asynchronously
-            process_utterance_results.append(process_utterances(nltk_corpus, fileid, transcript, participants,
-                target_child))
-        
-
+            if parallelize:
+                processed_file_results  = pool.apply_async(process_file, args = (fileid, dir_with_xml, corpus, collection, nltk_corpus))        
+            else: 
+                processed_file_results  = process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus)
         print('('+corpus_name+') Finished directory '+dir_with_xml)
 
-    print(process_utterance_results)
-    print('Finished corpus!')    
+    return(processed_file_results)
+    print('Finished corpus!')   
+
+
+def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus):
+
+    import django
+    django.setup()
+    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+        
+
+    # Create transcript and participant objects up front
+    transcript, participants, target_child = create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection)
+
+    # Ignore old filenames (due to recent update)
+    if not transcript:
+        return(None)
+
+    # necessary so child process doesn't inherit file descriptor
+    #db.connections.close_all()
+    
+    process_utterance_results = []
+    process_utterance_results.append(process_utterances(nltk_corpus, fileid, transcript, participants, target_child))
+
+    return(process_utterance_results)
+
 
 def flatten_list(hierarchical_list, list_name = None):    
     # list_name is for debugging
@@ -246,7 +254,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
     
     utterance_store = []
     token_store = []
-    sents = nltk_corpus.get_custom_sents(fileid)
+    sents = nltk_corpus.get_custom_sents(fileid)    
     
     #utterance_store = {}
 
@@ -259,6 +267,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         # annotations = sent[3]
         media = sent[4]
         tokens = sent[5]
+        actual_pho = sent[6]
+        model_pho = sent[7]
+
 
         # TODO use map code: participant object
         for participant in participants:
@@ -279,8 +290,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
         media_start = float(media['start']) if media else None
         media_end = float(media['end']) if media else None
-        media_unit = media['unit'] if media else None
-
+        media_unit = media['unit'] if media else None        
 
         utterance = Utterance.objects.create(
             speaker=speaker,
@@ -289,6 +299,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             type=utterance_type,
             corpus=transcript.corpus,
             corpus_name=transcript.corpus.name,
+            actual_phonology = ' '.join(actual_pho),
+            model_phonology = ' '.join(model_pho),
             speaker_code=speaker.code,
             speaker_name=speaker.name,
             speaker_role=speaker.role,
@@ -326,6 +338,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             english = token.get('english', '')
             clitic = token.get('clitic', '')
             num_morphemes = token.get('morpheme_length')
+            pho = token.get('pho', '')
+            mod = token.get('mod', '')
 
             if gloss:
                 utt_gloss.append(gloss)
@@ -353,6 +367,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 english=english,
                 clitic=clitic,
                 stem=stem,
+                actual_phonology=pho,
+                model_phonology=mod,
                 part_of_speech=part_of_speech,
                 utterance_type=utterance_type,
                 num_morphemes = num_morphemes,
@@ -383,7 +399,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         # utterance.relation = ' '.join(utt_relation)
         utterance.part_of_speech = ' '.join(utt_pos)
         utterance.num_morphemes = utt_num_morphemes
-        utterance.num_tokens = len(utt_gloss)        
+        utterance.num_tokens = len(utt_gloss)                
         utterance.save()
 
     
@@ -391,6 +407,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
     #bulk_write(token_store, 'Token', transcript.corpus.name, batch_size=1000)
     #bulk_write(utterance_store, 'Utterance', transcript.corpus.name, batch_size=1000)
     #Utterance.objects.bulk_create(utterance_store.values(), batch_size=1000) 
+    
     Token.objects.bulk_create(token_store, batch_size=1000) # utterance is none by the time we are here    
     print("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
@@ -453,7 +470,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
     t2 = time.time()
     #bulk_write(TranscriptBySpeaker_store, 'TranscriptBySpeaker', transcript.corpus.name, batch_size=1000)
-    #bulk_write(TokenFrequency_store, 'TokenFrequency', transcript.corpus.name, batch_size=1000)
+    #bulk_write(TokenFrequency_store, 'TokenFrequency', transcript.corpus.name, batch_size=1000)    
+    #test3
     TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
     TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
     print("("+transcript.corpus_name+'/'+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
