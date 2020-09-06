@@ -1,6 +1,6 @@
 import os
 import MySQLdb
-import sqlalchemy
+import pandas as pd
 
 params = {
 	"host":"ec2-54-68-171-132.us-west-2.compute.amazonaws.com",
@@ -10,6 +10,9 @@ params = {
 	"user": "childesdb",
 	"password": "uy5z4hf7ihBjf"
 }
+
+#Number of rows that we sample
+sample_size = 2
 
 def connect_to_childes(db_version = 'current', db_args = None):
     """Connects to childes-db
@@ -27,12 +30,33 @@ def connect_to_childes(db_version = 'current', db_args = None):
                     db = db_args['current'])
     return childes_con
 
+
+def parse_xml(row, u_index):
+    """
+    Read XML file from the row, and return the actual IPA and model IPA
+    """
+
+def log_error(row, exception):
+    """
+    Save error in logs
+    """
 db = connect_to_childes(db_args = params)
 #Pull data from the utterances table and join it with the transcripts table to get the path to the right file
-query = "SELECT gloss, utterance.language, actual_phonology, model_phonology, filename, transcript_id FROM utterance JOIN transcript ON utterance.transcript_id = transcript.id WHERE actual_phonology <> '' AND model_phonology <> ''"
+query = "SELECT utterance.id, gloss, utterance.language, actual_phonology, model_phonology, utterance_order, filename \
+FROM utterance JOIN transcript ON utterance.transcript_id = transcript.id \
+WHERE actual_phonology <> '' AND model_phonology <> ''"
+
 print("Running query to childes-db")
-cursor = db.cursor()
-cursor.execute(query)
-print("Number of rows in query result: " + str(cursor.rowcount))
-cursor.close()
+df = pd.read_sql(query, db)
 db.close()
+
+df = df.sample(sample_size)
+
+for r in df.iterrows():
+    parsed_actual, parsed_model = parse_xml(row)
+    db_actual, db_model = r['actual_phonology'], r['model_phonology']
+    try:
+        assert parsed_actual == db_actual
+        assert parsed_model == db_model
+    except:
+        log_error(row, exception)
