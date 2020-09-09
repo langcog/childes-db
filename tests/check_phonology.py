@@ -2,6 +2,7 @@ import os
 import MySQLdb
 import pandas as pd
 from nltk.corpus.reader.xmldocs import ElementTree
+from tqdm import tqdm
 
 params = {
 	"host":"ec2-54-68-171-132.us-west-2.compute.amazonaws.com",
@@ -13,7 +14,7 @@ params = {
 }
 
 #Number of rows that we sample
-sample_size = 2
+sample_size = 10
 
 def connect_to_childes(db_version = 'current', db_args = None):
     """Connects to childes-db
@@ -62,6 +63,9 @@ def parse_xml(xml_path, u_index):
 def log_error(index, row, exception):
     """
     Save error in logs
+    Index is the row which the error occurred in
+    row contains the data, and exception is an Exception object passed from the try-catch block. These are all cast
+    to strings and logged in a file called failed_tests.log
     """
     error_str = "Error at Row " + str(index) + "of query result"
     row_str = str(row)
@@ -80,15 +84,22 @@ print("Running query to childes-db")
 df = pd.read_sql(query, db)
 db.close()
 
-df = df.sample(sample_size)
+df = df.sample(sample_size) #Sample a set of rows from the dataframe (we don't want to test all the results)
 
-for i, r in df.iterrows():
+#counters for passed/failed test cases
+passed = 0
+failed = 0
+
+for i, r in tqdm(df.iterrows(), total=df.shape[0]):
+    print(str(passed) + " tests passed, " + str(failed) + " tests failed")
     parsed_actual, parsed_model = parse_xml(r['filename'], r['utterance_order'])
     db_actual, db_model = r['actual_phonology'], r['model_phonology']
     try:
+        passed += 1
         assert parsed_actual.decode('utf8') == db_actual
         assert parsed_model.decode('utf8')== db_model
     except Exception as e:
+        failed += 1
         log_error(i, r, e)
 
 
