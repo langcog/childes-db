@@ -28,7 +28,9 @@ def connect_to_childes(db_version = 'current', db_args = None):
                     #port = db_args['port'], #no port specified in json?
                     user = db_args['user'],
                     passwd = db_args['password'],
-                    db = db_args['current'])
+                    db = db_args['current'],
+                    use_unicode = True,
+                    charset = 'utf8')
     return childes_con
 
 
@@ -54,7 +56,8 @@ def parse_xml(xml_path, u_index):
 
     actual_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in actual_words]
     model_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in model_words]
-    return ' '.join(actual_pho), ' '.join(model_pho) 
+    actual_pho, model_pho = ' '.join(actual_pho), ' '.join(model_pho)
+    return actual_pho.encode('utf8'), model_pho.encode('utf8')
     
 def log_error(row, exception):
     """
@@ -76,7 +79,7 @@ db.close()
 for _, r in df.iterrows():
     parsed_actual, parsed_model = parse_xml(r['filename'], r['utterance_order'])
     db_actual, db_model = r['actual_phonology'], r['model_phonology']
-    print(parsed_actual.encode('utf-8'), parsed_model.encode('utf-8'))
+    print(parsed_actual.decode('utf8'), parsed_model.decode('utf8'))
     print(db_actual, db_model)
-    assert parsed_actual == db_actual
-    assert parsed_model == db_model
+    assert parsed_actual.decode('utf8') == db_actual
+    assert parsed_model.decode('utf8')== db_model
