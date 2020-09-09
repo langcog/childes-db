@@ -59,27 +59,36 @@ def parse_xml(xml_path, u_index):
     actual_pho, model_pho = ' '.join(actual_pho), ' '.join(model_pho)
     return actual_pho.encode('utf8'), model_pho.encode('utf8')
     
-def log_error(row, exception):
+def log_error(index, row, exception):
     """
     Save error in logs
     """
-    pass
+    error_str = "Error at Row " + str(index) + "of query result"
+    row_str = str(row)
+    exception_str = str(exception)
+    log_msg = '\n'.join([error_str, row_str, exception_str])
+    with open('failed_tests.log', 'w') as f:
+        f.write(log_msg)
+
 db = connect_to_childes(db_args = params)
 #Pull data from the utterances table and join it with the transcripts table to get the path to the right file
 query = "SELECT utterance.id, gloss, utterance.language, actual_phonology, model_phonology, utterance_order, filename \
 FROM utterance JOIN transcript ON utterance.transcript_id = transcript.id \
-WHERE actual_phonology <> '' AND model_phonology <> '' AND filename = 'Eng-NA/Penney/Narrative/D43.xml' LIMIT 1"
+WHERE actual_phonology <> '' AND model_phonology <> ''"
 
 print("Running query to childes-db")
 df = pd.read_sql(query, db)
 db.close()
 
-#df = df.sample(sample_size)
+df = df.sample(sample_size)
 
-for _, r in df.iterrows():
+for i, r in df.iterrows():
     parsed_actual, parsed_model = parse_xml(r['filename'], r['utterance_order'])
     db_actual, db_model = r['actual_phonology'], r['model_phonology']
-    print(parsed_actual.decode('utf8'), parsed_model.decode('utf8'))
-    print(db_actual, db_model)
-    assert parsed_actual.decode('utf8') == db_actual
-    assert parsed_model.decode('utf8')== db_model
+    try:
+        assert parsed_actual.decode('utf8') == db_actual
+        assert parsed_model.decode('utf8')== db_model
+    except Exception as e:
+        log_error(i, r, e)
+
+
