@@ -323,7 +323,16 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utt_pos = []
         utt_num_morphemes = None
 
-        # TODO nltk token instead of token        
+        # TODO nltk token instead of token 
+        use_tok_phon = True       
+
+        for token in tokens:
+            pho = token.get('pho', '')
+            mod = token.get('mod', '')
+            if re.match(pho, "\([.]*\)") or re.match(mod, "\([.]*\)")
+                use_tok_phon = False
+                break
+    
         for token in tokens:
             # TODO use null or blank?
             gloss = token.get('gloss', '')
@@ -338,8 +347,12 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             english = token.get('english', '')
             clitic = token.get('clitic', '')
             num_morphemes = token.get('morpheme_length')
-            pho = token.get('pho', '')
-            mod = token.get('mod', '')
+            if use_tok_phon:
+                pho = token.get('pho', '')
+                mod = token.get('mod', '')
+            else:
+                pho = ''
+                mod = ''
 
             if gloss:
                 utt_gloss.append(gloss)
