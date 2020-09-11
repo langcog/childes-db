@@ -66,8 +66,9 @@ class Transcript(Model):
 
 
 class Utterance(Model):
-    gloss = TextField(blank=True, default=None, null=True)
-    stem = TextField(blank=True, default=None, null=True)
+    gloss = CharField(db_index=True, max_length=1023, blank=True, default=None, null=True)
+    stem = CharField(db_index=True, max_length=1023, blank=True, default=None, null=True)
+    relation = TextField(blank=True, default=None, null=True)
     actual_phonology = CharField(db_index=True, max_length=1023, blank=True, default=None, null=True)
     model_phonology = CharField(db_index=True, max_length=1023, blank=True, default=None, null=True)
     type = CharField(max_length=255, blank=True, default=None, null=True)
@@ -109,6 +110,7 @@ class Token(Model):
     prefix = CharField(max_length=255, blank=True, default=None, null=True)
     part_of_speech = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     stem = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    relation = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     actual_phonology = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     model_phonology = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
     suffix = CharField(max_length=255, blank=True, default=None, null=True)

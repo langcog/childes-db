@@ -292,10 +292,10 @@ class CHILDESCorpusReader(XMLCorpusReader):
         # relational
         # the gold standard is stored in
         # <mor></mor><mor type="trn"><gra type="grt">
-        # original: if relation == True:
+        # original: if relation == True:        
+
         relation = ''
-        for xmlstem_rel in xmlword.findall('.//{%s}mor/{%s}gra'
-                                                   % (NS, NS)):
+        for xmlstem_rel in xmlword.findall('.//{%s}mor/{%s}gra' % (NS, NS)):
             if not xmlstem_rel.get('type') == 'grt':
                 # word = (word[0], word[1],
                 #         xmlstem_rel.get('index')
@@ -303,9 +303,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 #         + "|" + xmlstem_rel.get('relation'))
 
                 # store relation in token map
-                relation = xmlstem_rel.get('index') \
-                                    + "|" + xmlstem_rel.get('head') \
-                                    + "|" + xmlstem_rel.get('relation')
+                relation = xmlstem_rel.get('index') + "|" + xmlstem_rel.get('head') + "|" + xmlstem_rel.get('relation')
 
                 # ignore gold standard for now
                 # else:
@@ -314,29 +312,29 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 #             xmlstem_rel.get('index')
                 #             + "|" + xmlstem_rel.get('head')
                 #             + "|" + xmlstem_rel.get('relation'))
-        try:  # what is this?
-            for xmlpost_rel in xmlword.findall('.//{%s}mor/{%s}mor-post/{%s}gra'
-                                                       % (NS, NS, NS)):
-                if not xmlpost_rel.get('type') == 'grt':
-                    # suffixStem = (suffixStem[0],
-                    #               suffixStem[1],
-                    #               xmlpost_rel.get('index')
-                    #               + "|" + xmlpost_rel.get('head')
-                    #               + "|" + xmlpost_rel.get('relation'))
+        # try:  # what is this?
+        #     for xmlpost_rel in xmlword.findall('.//{%s}mor/{%s}mor-post/{%s}gra'
+        #                                                % (NS, NS, NS)):
+        #         if not xmlpost_rel.get('type') == 'grt':
+        #             # suffixStem = (suffixStem[0],
+        #             #               suffixStem[1],
+        #             #               xmlpost_rel.get('index')
+        #             #               + "|" + xmlpost_rel.get('head')
+        #             #               + "|" + xmlpost_rel.get('relation'))
 
-                    # add suffix relation to normal relation
-                    relation += ' ' + xmlpost_rel.get('index') \
-                                         + "|" + xmlpost_rel.get('head') \
-                                         + "|" + xmlpost_rel.get('relation')
-                    # else:
-                    #     suffixStem = (suffixStem[0], suffixStem[1],
-                    #                   suffixStem[2], suffixStem[0],
-                    #                   suffixStem[1],
-                    #                   xmlpost_rel.get('index')
-                    #                   + "|" + xmlpost_rel.get('head')
-                    #                   + "|" + xmlpost_rel.get('relation'))
-        except:
-            pass
+        #             # add suffix relation to normal relation
+        #             relation += ' ' + xmlpost_rel.get('index') \
+        #                                  + "|" + xmlpost_rel.get('head') \
+        #                                  + "|" + xmlpost_rel.get('relation')
+        #             # else:
+        #             #     suffixStem = (suffixStem[0], suffixStem[1],
+        #             #                   suffixStem[2], suffixStem[0],
+        #             #                   suffixStem[1],
+        #             #                   xmlpost_rel.get('index')
+        #             #                   + "|" + xmlpost_rel.get('head')
+        #             #                   + "|" + xmlpost_rel.get('relation'))
+        # except:
+        #     pass
 
         return relation
 
@@ -512,7 +510,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
             # Pull out the phonology tiers
             if fileHasPhonology:
-                actual_pho, model_pho = get_phonology(xmlsent, speaker, sentID)
+                actual_pho, model_pho = get_phonology(xmlsent, speaker, sentID, fileid)
                 num_tokens = len(xmlsent.findall('.//{%s}w' % NS))
                 include_actual_pho = num_tokens == len(actual_pho)
                 include_model_pho = num_tokens == len(model_pho)
@@ -861,7 +859,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         # Pausing is a good idea, but it's up to the user...
         # raw_input("Hit Return to continue")
 
-def get_phonology(xmlsent, speaker_code, sentID):
+def get_phonology(xmlsent, speaker_code, sentID, fileid):
 
     actual_pho = [] #initial value
     model_pho = [] #initial value
@@ -872,15 +870,18 @@ def get_phonology(xmlsent, speaker_code, sentID):
     words = [x.text for x in xmlsent.findall('.//{%s}w' % NS)]
     words = [x for x in words if x is not None]
 
-    diagnostic_info = '"'+' '.join(words)+'" ('+str(sentID)+')'
+    diagnostic_info = '"'+' '.join(words)+'" ('+fileid+': '+str(sentID)+')'
 
     if (len(actual_words) > 0) and (speaker_code != 'CHI'):   
         print('Actual phonology tier is populated for a non child speaker! '+diagnostic_info)
 
+    if (len(model_words) > 0) and (speaker_code != 'CHI'):   
+        print('Model phonology tier is populated for a non child speaker! '+diagnostic_info)
+
     # Prep the phonology in preparation to merge back in when tokens are ready
     if (len(actual_words) == 0) and (speaker_code == 'CHI'):
         if len(xmlsent.findall('.//{%s}actual' % NS)) > 0:
-            print('Pho tier was found in a weird place! '+diagnostic_info)
+            print('Actual pho tier was found in a weird place! '+diagnostic_info)
             import pdb
             pdb.set_trace()
             #[ ] are there instances where phonology is embedded at a different level?
@@ -888,9 +889,22 @@ def get_phonology(xmlsent, speaker_code, sentID):
             
             if not 'xxx' in words: #cut down on logging
                 print("No 'actual' phonetic transcript! " + diagnostic_info)
+
+    if (len(model_words) == 0) and (speaker_code == 'CHI'):
+        if len(xmlsent.findall('.//{%s}model' % NS)) > 0:
+            print('Model pho tier was found in a weird place! '+diagnostic_info)
+            import pdb
+            pdb.set_trace()
+            #[ ] are there instances where phonology is embedded at a different level?
+        else:
+            
+            if not 'xxx' in words: #cut down on logging
+                print("No 'model' phonetic transcript! " + diagnostic_info)
             
     if len(actual_words) > 0:
         actual_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in actual_words]
+    
+    if len(model_words) > 0:
         model_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in model_words]        
 
     return(actual_pho, model_pho)

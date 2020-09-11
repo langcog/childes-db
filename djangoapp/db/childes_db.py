@@ -11,7 +11,6 @@ import time
 
 from django import db
 from django.db.models import Avg, Count, Sum
-#from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 import db.models
 
 
@@ -24,17 +23,8 @@ import numpy as np
 import sys
 import time
 
-def trace_unhandled_exceptions(func):
-    @functools.wraps(func)
-    def wrapped_func(*args, **kwargs):
-        try:
-            func(*args, **kwargs)
-        except:
-            print('Exception in '+func.__name__)
-            traceback.print_exc()
-    return(wrapped_func)
 
-def populate_db(collection_root, selected_collection=None, parallelize=False):    
+def populate_db(collection_root, selected_collection=None, parallelize=True):    
 
     populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()
@@ -53,15 +43,9 @@ def populate_db(collection_root, selected_collection=None, parallelize=False):
             continue # skip it if it isn't the selected collection        
         results.append(process_collection(collection_root, collection_name, pool, parallelize))
 
-    # catch any exceptions thrown by child processes        
-    for result in results:
-        try:
-            result.get()
-        except:
-            print('Issue getting results!')
-            import pdb
-            pdb.set_trace()
-            traceback.print_exc()
+    if parallelize:
+        pool.close()
+        pool.join()
 
     print('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
 
@@ -78,26 +62,17 @@ def process_collection(collection_root, collection_name, pool, parallelize):
     # the top level of a collection is the corpora    
     top_level_corpora_in_collection = [os.path.basename(os.path.normpath(x)) for x in glob.glob(os.path.join(collection_root, collection_name,'*/')) ]       
 
-    print('Corpus contains '+str(len(top_level_corpora_in_collection)) + ' top-level corpora; parallelizing...')
+    print('Corpus contains '+str(len(top_level_corpora_in_collection)))
 
     # apply_async
     for corpus_name in top_level_corpora_in_collection:
         results.append(process_corpus(os.path.join(collection_root, collection_name), corpus_name, collection_name, pool, parallelize))
 
-
-    # catch any exceptions thrown by child processes            
-    for result in results:
-        try:
-            result.get()
-
-        except:
-            traceback.print_exc()
-
     # dumb parallelization
     #results = Parallel(n_jobs=24)(delayed(process_corpus)(os.path.join(collection_root, collection_name), corpus_name, collection_name) for corpus_name in top_level_corpora_in_collection)
 
     print('Finished collection '+collection_name +' in '+str(round(time.time() - t0, 3))+' seconds')
-    return(result)
+    return(results)
 
 def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
 
@@ -106,7 +81,7 @@ def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
     print('('+corpus_name+') Bulk write for '+data_type+' took '+str(round(time.time() - bulk_write_start_time, 3)))+'s'
 
         
-def process_corpus(corpus_root, corpus_name, collection_name, pool, parallelize=True):
+def process_corpus(corpus_root, corpus_name, collection_name, pool, parallelize):
 
     from db.models import Collection, Corpus
 
@@ -141,9 +116,14 @@ def process_corpus(corpus_root, corpus_name, collection_name, pool, parallelize=
 
 
             if parallelize:
-                processed_file_results  = pool.apply_async(process_file, args = (fileid, dir_with_xml, corpus, collection, nltk_corpus))        
+                processed_file_results.append(pool.apply_async(process_file, args = (fileid, dir_with_xml, corpus, collection, nltk_corpus)))
+
             else: 
-                processed_file_results  = process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus)
+                processed_file_results.append(process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus))
+        
+	
+
+
         print('('+corpus_name+') Finished directory '+dir_with_xml)
 
     return(processed_file_results)
@@ -167,8 +147,7 @@ def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus):
     # necessary so child process doesn't inherit file descriptor
     #db.connections.close_all()
     
-    process_utterance_results = []
-    process_utterance_results.append(process_utterances(nltk_corpus, fileid, transcript, participants, target_child))
+    process_utterance_results = process_utterances(nltk_corpus, fileid, transcript, participants, target_child)
 
     return(process_utterance_results)
 
@@ -319,7 +298,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
         utt_gloss = []
         utt_stem = []
-        # utt_relation = []
+        utt_relation = []
         utt_pos = []
         utt_num_morphemes = None
 
@@ -330,7 +309,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             replacement = token.get('replacement', '')
             stem = token.get('stem', '')
             part_of_speech = token.get('pos', '')
-            # relation = token.get('relation', '')
+            relation = token.get('relation', '')
             token_order = token.get('order', '')
 
             prefix = token.get('prefix', '')
@@ -347,8 +326,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             if stem:
                 utt_stem.append(stem)
 
-            # if relation:
-            #     utt_relation.append(relation)
+            if relation:
+                utt_relation.append(relation)
 
             if num_morphemes:
                 if utt_num_morphemes:
@@ -372,7 +351,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 part_of_speech=part_of_speech,
                 utterance_type=utterance_type,
                 num_morphemes = num_morphemes,
-                # relation=relation,
+                relation=relation,
                 token_order=token_order,
                 speaker=speaker,
                 utterance=utterance, # what can we do here
@@ -396,19 +375,15 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         # the following are built by iterating through each utterance
         utterance.gloss = ' '.join(utt_gloss)
         utterance.stem = ' '.join(utt_stem)
-        # utterance.relation = ' '.join(utt_relation)
+        utterance.relation = ' '.join(utt_relation)
         utterance.part_of_speech = ' '.join(utt_pos)
         utterance.num_morphemes = utt_num_morphemes
         utterance.num_tokens = len(utt_gloss)                
         utterance.save()
 
     
-    t1 = time.time()
-    #bulk_write(token_store, 'Token', transcript.corpus.name, batch_size=1000)
-    #bulk_write(utterance_store, 'Utterance', transcript.corpus.name, batch_size=1000)
-    #Utterance.objects.bulk_create(utterance_store.values(), batch_size=1000) 
-    
-    Token.objects.bulk_create(token_store, batch_size=1000) # utterance is none by the time we are here    
+    t1 = time.time()        
+    Token.objects.bulk_create(token_store, batch_size=1000)
     print("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
 
