@@ -23,15 +23,12 @@ import copy
 from nltk.util import flatten
 from nltk.corpus.reader.util import concat
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
+from utils import *
 
 # to resolve the namespace issue
 NS = 'http://www.talkbank.org/ns/talkbank'
 
 from xml.dom import minidom
-def prettify(ET, fname):
-    xmlstr = minidom.parseString(ET.tostring(root)).toprettyxml(indent="   ")
-    with open(fname, "w") as f:
-        f.write(xmlstr)
 
 class CHILDESCorpusReader(XMLCorpusReader):
     """

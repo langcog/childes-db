@@ -1,0 +1,73 @@
+import db
+from xml.dom import minidom
+from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
+
+
+def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
+
+    bulk_write_start_time = time.time()    
+    getattr(db.models, data_type).objects.bulk_create(records_to_write, batch_size)
+    print('('+corpus_name+') Bulk write for '+data_type+' took '+str(round(time.time() - bulk_write_start_time, 3)))+'s'
+
+def flatten_list(hierarchical_list, list_name = None):    
+    # list_name is for debugging
+    if list_name is not None:
+        print('Flattening '+list_name+' ('+str(len(list_name))+' objects)...')
+        print('Example record:')
+        print(hierarchical_list)
+
+    return([item for sublist in hierarchical_list for item in sublist if item is not None])
+
+def extract_target_child(participants):
+    nltk_target_child = None
+    code_to_pop = None
+
+    for code, nltk_participant in participants.items():
+        # TODO use code = CHI as well
+        if nltk_participant.get('role') == 'Target_Child':
+            if nltk_target_child:
+                # 2 target children in this transcript, return None
+                return None, participants
+            else:
+                nltk_target_child = nltk_participant
+                code_to_pop = code
+
+    if code_to_pop:
+        participants.pop(code_to_pop)
+    return nltk_target_child, participants
+
+def parse_age(age):
+    age_in_days = 0
+
+    # parse ISO 8601 time interval
+    for number, unit in re.findall('(?P<number>\d+)(?P<period>M|D|Y)', (age or '').split('T')[0]):
+        number = int(number)
+        if unit == 'Y':
+            age_in_days += number * 365.25
+        elif unit == 'M':
+            age_in_days += number * 365.25 / 12
+        elif unit == 'D':
+            age_in_days += number
+
+    return age_in_days if age_in_days != 0 else None
+
+
+def update_age(participant, age):
+    if age:
+        if not participant.min_age:
+            participant.min_age = age
+
+        if participant.min_age and age < participant.min_age:
+            participant.min_age = age
+
+        if not participant.max_age:
+            participant.max_age = age
+
+        if participant.max_age and age > participant.max_age:
+            participant.max_age = age
+
+def prettify(ET, fname):
+    xmlstr = minidom.parseString(ET.tostring(root)).toprettyxml(indent="   ")
+    with open(fname, "w") as f:
+        f.write(xmlstr)
+
