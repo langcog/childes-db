@@ -1,3 +1,5 @@
+from utils import * 
+
 def get_or_create_participant(corpus, attr_map, target_child=None):
     
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
