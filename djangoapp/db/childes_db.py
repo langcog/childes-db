@@ -26,7 +26,7 @@ from utils import *
 from transcripts_participants import *
 
 
-def populate_db(collection_root, selected_collection=None, parallelize=True):    
+def populate_db(collection_root, selected_collection=None, parallelize=False):    
 
     populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()
@@ -210,15 +210,64 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             language=transcript.language
         )
         
-
+        """
         utt_gloss = []
         utt_stem = []
         utt_relation = []
         utt_pos = []
         utt_num_morphemes = None
+        """
+        process_utterance_tokens(tokens, utterance, token_store)
+    
+    t1 = time.time()        
+    Token.objects.bulk_create(token_store, batch_size=1000)
+    print("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
-        # TODO nltk token instead of token        
-        for token in tokens:
+
+    TranscriptBySpeaker_store = []
+    TokenFrequency_store = []
+    
+    for participant in participants:
+        tbs = process_transcript_by_speaker(participant, transcript, target_child)
+        TranscriptBySpeaker_store.append(tbs)
+
+        gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
+        for gloss_count in gloss_counts:
+            tf = TokenFrequency(
+                transcript=transcript,
+                corpus=transcript.corpus,
+                gloss=gloss_count['gloss'],
+                count=gloss_count['count'],
+                speaker=participant,
+                speaker_role=participant.role,
+                target_child=target_child,
+                target_child_name=target_child.name if target_child else None,
+                target_child_age=target_child.age if target_child else None,
+                target_child_sex=target_child.sex if target_child else None,
+                collection=transcript.collection,
+                collection_name=transcript.collection.name,
+                language=transcript.language
+            )
+            TokenFrequency_store.append(tf)
+
+    t2 = time.time()
+    #bulk_write(TranscriptBySpeaker_store, 'TranscriptBySpeaker', transcript.corpus.name, batch_size=1000)
+    #bulk_write(TokenFrequency_store, 'TokenFrequency', transcript.corpus.name, batch_size=1000)    
+    #test3
+    TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
+    TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
+    print("("+transcript.corpus_name+'/'+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
+
+    return('success')
+
+def process_tokens(tokens, utterance, token_store):
+    #This should modify the token store and utterance object
+    utt_gloss = []
+    utt_stem = []
+    utt_relation = []
+    utt_pos = []
+    utt_num_morphemes = None
+    for token in tokens:
             # TODO use null or blank?
             gloss = token.get('gloss', '')
             replacement = token.get('replacement', '')
@@ -296,16 +345,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utterance.num_tokens = len(utt_gloss)                
         utterance.save()
 
-    
-    t1 = time.time()        
-    Token.objects.bulk_create(token_store, batch_size=1000)
-    print("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
-
-
-    TranscriptBySpeaker_store = []
-    TokenFrequency_store = []
-    
-    for participant in participants:
+def process_transcript_by_speaker(participant, transcript, target_child):
         speaker_utterances = Utterance.objects.filter(speaker=participant, transcript=transcript)
         speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
 
@@ -337,33 +377,4 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             collection_name=transcript.collection.name,
             language = transcript.language
         )
-        TranscriptBySpeaker_store.append(tbs)
-
-        gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
-        for gloss_count in gloss_counts:
-            tf = TokenFrequency(
-                transcript=transcript,
-                corpus=transcript.corpus,
-                gloss=gloss_count['gloss'],
-                count=gloss_count['count'],
-                speaker=participant,
-                speaker_role=participant.role,
-                target_child=target_child,
-                target_child_name=target_child.name if target_child else None,
-                target_child_age=target_child.age if target_child else None,
-                target_child_sex=target_child.sex if target_child else None,
-                collection=transcript.collection,
-                collection_name=transcript.collection.name,
-                language=transcript.language
-            )
-            TokenFrequency_store.append(tf)
-
-    t2 = time.time()
-    #bulk_write(TranscriptBySpeaker_store, 'TranscriptBySpeaker', transcript.corpus.name, batch_size=1000)
-    #bulk_write(TokenFrequency_store, 'TokenFrequency', transcript.corpus.name, batch_size=1000)    
-    #test3
-    TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
-    TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
-    print("("+transcript.corpus_name+'/'+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
-
-    return('success')
+        return tbs
