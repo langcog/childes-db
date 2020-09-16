@@ -260,7 +260,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
     return('success')
 
-def process_tokens(tokens, utterance, token_store):
+def process_utterance_tokenss(tokens, utterance, token_store):
     #This should modify the token store and utterance object
     utt_gloss = []
     utt_stem = []
