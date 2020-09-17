@@ -1,13 +1,14 @@
-import db
 from xml.dom import minidom
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
+import re
 
-
+"""
 def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
 
     bulk_write_start_time = time.time()    
     getattr(db.models, data_type).objects.bulk_create(records_to_write, batch_size)
     print('('+corpus_name+') Bulk write for '+data_type+' took '+str(round(time.time() - bulk_write_start_time, 3)))+'s'
+"""
 
 def flatten_list(hierarchical_list, list_name = None):    
     # list_name is for debugging

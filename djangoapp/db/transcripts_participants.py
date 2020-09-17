@@ -1,4 +1,8 @@
-from utils import * 
+from db.utils import parse_age, update_age, extract_target_child
+from django.db.models import Avg, Sum
+from db.lexical_diversity import mtld, hdd
+
+import os
 
 def get_or_create_participant(corpus, attr_map, target_child=None):
     
@@ -121,36 +125,38 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
 
     return transcript, result_participants, target_child
 
-def process_transcript_by_speaker(participant, transcript, target_child):
-        speaker_utterances = Utterance.objects.filter(speaker=participant, transcript=transcript)
-        speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
+def process_transcript_by_speaker(participant, transcript, target_child, speaker_utterances, speaker_tokens):
 
-        num_utterances = speaker_utterances.count()
-        mlu_w = speaker_utterances.aggregate(Avg('num_tokens'))['num_tokens__avg']
-        num_types = speaker_tokens.values('gloss').distinct().count()
-        num_tokens = speaker_tokens.values('gloss').count()
-        num_morphemes = speaker_utterances.aggregate(Sum('num_morphemes'))['num_morphemes__sum']
-        mlu_m = speaker_utterances.aggregate(Avg('num_morphemes'))['num_morphemes__avg']
+    from db.models import Utterance, Token, TranscriptBySpeaker
+    #speaker_utterances = Utterance.objects.filter(speaker=participant, transcript=transcript)
+    #speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
 
-        tbs = TranscriptBySpeaker(
-            transcript=transcript,
-            corpus=transcript.corpus,
-            speaker=participant,
-            speaker_role=participant.role,
-            target_child=target_child,
-            target_child_name=target_child.name if target_child else None,
-            target_child_age=target_child.age if target_child else None,
-            target_child_sex=target_child.sex if target_child else None,
-            num_utterances=num_utterances,
-            mlu_w=mlu_w,
-            mlu_m=mlu_m,
-            mtld=mtld(speaker_tokens),
-            hdd=hdd(speaker_tokens),
-            num_types=num_types,
-            num_tokens=num_tokens,
-            num_morphemes=num_morphemes,
-            collection=transcript.collection,
-            collection_name=transcript.collection.name,
-            language = transcript.language
-        )
-        return tbs
+    num_utterances = speaker_utterances.count()
+    mlu_w = speaker_utterances.aggregate(Avg('num_tokens'))['num_tokens__avg']
+    num_types = speaker_tokens.values('gloss').distinct().count()
+    num_tokens = speaker_tokens.values('gloss').count()
+    num_morphemes = speaker_utterances.aggregate(Sum('num_morphemes'))['num_morphemes__sum']
+    mlu_m = speaker_utterances.aggregate(Avg('num_morphemes'))['num_morphemes__avg']
+
+    tbs = TranscriptBySpeaker(
+        transcript=transcript,
+        corpus=transcript.corpus,
+        speaker=participant,
+        speaker_role=participant.role,
+        target_child=target_child,
+        target_child_name=target_child.name if target_child else None,
+        target_child_age=target_child.age if target_child else None,
+        target_child_sex=target_child.sex if target_child else None,
+        num_utterances=num_utterances,
+        mlu_w=mlu_w,
+        mlu_m=mlu_m,
+        mtld=mtld(speaker_tokens),
+        hdd=hdd(speaker_tokens),
+        num_types=num_types,
+        num_tokens=num_tokens,
+        num_morphemes=num_morphemes,
+        collection=transcript.collection,
+        collection_name=transcript.collection.name,
+        language = transcript.language
+    )
+    return tbs

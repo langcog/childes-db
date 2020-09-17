@@ -17,16 +17,15 @@ import db.models
 from db.lexical_diversity import mtld, hdd
 from db.childes import CHILDESCorpusReader
 from db.childes import get_phonology
+from db.transcripts_participants import create_transcript_and_participants, process_transcript_by_speaker
+
 
 import functools
 import numpy as np
 import sys
 import time
-from utils import *
-from transcripts_participants import *
 
-
-def populate_db(collection_root, selected_collection=None, parallelize=False):    
+def populate_db(collection_root, selected_collection=None, parallelize=True):    
 
     populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()
@@ -217,7 +216,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utt_pos = []
         utt_num_morphemes = None
         """
-        process_utterance_tokens(tokens, utterance, token_store)
+        process_utterance_tokens(tokens, utterance, token_store, utterance_type, speaker, transcript, target_child)
     
     t1 = time.time()        
     Token.objects.bulk_create(token_store, batch_size=1000)
@@ -228,9 +227,11 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
     TokenFrequency_store = []
     
     for participant in participants:
-        tbs = process_transcript_by_speaker(participant, transcript, target_child)
-        TranscriptBySpeaker_store.append(tbs)
+        speaker_utterances = Utterance.objects.filter(speaker=participant, transcript=transcript)
+        speaker_tokens = Token.objects.filter(speaker=participant, transcript=transcript)
 
+        tbs = process_transcript_by_speaker(participant, transcript, target_child, speaker_utterances, speaker_tokens)
+        TranscriptBySpeaker_store.append(tbs)
         gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
         for gloss_count in gloss_counts:
             tf = TokenFrequency(
@@ -251,8 +252,6 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             TokenFrequency_store.append(tf)
 
     t2 = time.time()
-    #bulk_write(TranscriptBySpeaker_store, 'TranscriptBySpeaker', transcript.corpus.name, batch_size=1000)
-    #bulk_write(TokenFrequency_store, 'TokenFrequency', transcript.corpus.name, batch_size=1000)    
     #test3
     TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
     TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
@@ -260,8 +259,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
     return('success')
 
-def process_utterance_tokenss(tokens, utterance, token_store):
+def process_utterance_tokens(tokens, utterance, token_store, utterance_type, speaker, transcript, target_child):
     #This should modify the token store and utterance object
+    from db.models import Token, Utterance
     utt_gloss = []
     utt_stem = []
     utt_relation = []
@@ -337,10 +337,10 @@ def process_utterance_tokenss(tokens, utterance, token_store):
 
         
         # the following are built by iterating through each utterance
-        utterance.gloss = ' '.join(utt_gloss)
-        utterance.stem = ' '.join(utt_stem)
-        utterance.relation = ' '.join(utt_relation)
-        utterance.part_of_speech = ' '.join(utt_pos)
-        utterance.num_morphemes = utt_num_morphemes
-        utterance.num_tokens = len(utt_gloss)                
-        utterance.save()
+    utterance.gloss = ' '.join(utt_gloss)
+    utterance.stem = ' '.join(utt_stem)
+    utterance.relation = ' '.join(utt_relation)
+    utterance.part_of_speech = ' '.join(utt_pos)
+    utterance.num_morphemes = utt_num_morphemes
+    utterance.num_tokens = len(utt_gloss)                
+    utterance.save()
