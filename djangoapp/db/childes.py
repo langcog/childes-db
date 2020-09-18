@@ -24,6 +24,7 @@ from nltk.util import flatten
 from nltk.corpus.reader.util import concat
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
 from db.reader_utils import *
+import pdb
 
 # to resolve the namespace issue
 NS = 'http://www.talkbank.org/ns/talkbank'
@@ -336,65 +337,24 @@ class CHILDESCorpusReader(XMLCorpusReader):
         return pos
 
     def _get_morphology(self, xmlword):
-        morpheme_length = 0
+        NS = 'http://www.talkbank.org/ns/talkbank'
 
-        # do i have to make sure this doesn't belong to the clitic...
-        # TODO comment xml structure here. also get mor first
+        #Calling functions from reader_utils
         prefixes = get_list_morphemes('.//{%s}mor/{%s}mw/{%s}mpfx' % (NS, NS, NS), xmlword)
-        #morpheme_length += len(prefixes)
         prefix = ' '.join(prefixes)
 
         pos = get_single_morpheme('.//{%s}mor/{%s}mw/{%s}pos/{%s}c' % (NS, NS, NS, NS), xmlword)
 
         stem = get_single_morpheme('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS), xmlword)
-        #morpheme_length += 1
 
         suffixes = get_list_morphemes('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS), xmlword)
-        #morpheme_length += len(suffixes)
         suffix = " ".join(suffixes)
 
         english_translation = get_single_morpheme('.//{%s}mor/{%s}menx' % (NS, NS), xmlword)
         clitic = get_single_morpheme('.//{%s}mor/{%s}mor-post' % (NS, NS), xmlword)
-        #morpheme_length += 1
+
+        #Returns zero if the list has all empty strings or lists
         morpheme_length = compute_morpheme_length([prefixes, stem, suffixes, clitic])
-
-        """
-        stem = ''
-        xmlstem = xmlword.findall('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS))
-        if xmlstem:
-            stem = xmlstem[0].text
-            morpheme_length += 1
-
-        
-
-        suffixes = []
-        # why go down the path like this...?
-        # hopefully mk catches both suffixes and fusional suffixes
-        xml_suffixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS))
-        for xml_suffix in xml_suffixes:
-            suffixes.append(xml_suffix.text)
-            morpheme_length += 1
-
-        suffix = ' '.join(suffixes)
-
-        english_translation = '' # empty strings or null
-        xml_english_translation = xmlword.findall('.//{%s}mor/{%s}menx' % (NS, NS))
-        if xml_english_translation:
-            english_translation = xml_english_translation[0].text
-
-
-        clitic = ''
-        xml_clitic = xmlword.findall('.//{%s}mor/{%s}mor-post' % (NS, NS))
-        if xml_clitic:
-            clitic_parts = xml_clitic[0].findall('.//{%s}mw' % NS)
-            if clitic_parts:
-                a = clitic_parts[0].findall('.//{%s}pos/{%s}c' % (NS, NS))
-                b = clitic_parts[0].findall('.//{%s}stem' % NS)
-                c = clitic_parts[0].findall('.//{%s}mk' % NS)
-                clitic = " ".join([a[0].text if a else "", b[0].text if b else "", c[0].text if c else ""])
-            morpheme_length += 1
-        """
-
         return prefix, pos, stem, suffix, english_translation, clitic, morpheme_length if morpheme_length > 0 else None
 
 

@@ -1,27 +1,29 @@
+import pdb
+NS = 'http://www.talkbank.org/ns/talkbank'
 
 def mlu_calc_components(sents):    
-        results = []
-        lastSent = []
-        numFillers = 0
-        sentDiscount = 0
-        for sent in sents:
-            posList = [pos for (word,pos) in sent]
-            # if any part of the sentence is intelligible
-            if any(pos == 'unk' for pos in posList):
-                next
-            # if the sentence is null
-            elif sent == []:
-                next
-            # if the sentence is the same as the last sent
-            elif sent == lastSent:
-                next
-            else:
-                results.append([word for (word,pos) in sent])
-                # count number of fillers
-                if len(set(['co',None]).intersection(posList)) > 0:
-                    numFillers += posList.count('co')
-                    numFillers += posList.count(None)
-                    sentDiscount += 1
+    results = []
+    lastSent = []
+    numFillers = 0
+    sentDiscount = 0
+    for sent in sents:
+        posList = [pos for (word,pos) in sent]
+        # if any part of the sentence is intelligible
+        if any(pos == 'unk' for pos in posList):
+            next
+        # if the sentence is null
+        elif sent == []:
+            next
+        # if the sentence is the same as the last sent
+        elif sent == lastSent:
+            next
+        else:
+            results.append([word for (word,pos) in sent])
+            # count number of fillers
+            if len(set(['co',None]).intersection(posList)) > 0:
+                numFillers += posList.count('co')
+                numFillers += posList.count(None)
+                sentDiscount += 1
             lastSent = sent
     return results, lastSent, numFillers, sentDiscount
 
@@ -51,7 +53,7 @@ def get_single_morpheme(query, xmlword):
             xml_pos_subcategories = xmlword.findall('.//{%s}mor/{%s}mw/{%s}pos/{%s}s' % (NS, NS, NS, NS))
             for xml_pos_subcategory in xml_pos_subcategories:
                 morpheme += ":" + xml_pos_subcategory.text
-        elif query == './/{%s}mor/{%s}mor-post' % (NS, NS)#clitic
+        elif query == './/{%s}mor/{%s}mor-post' % (NS, NS): #clitic
             clitic_parts = xml_result[0].findall('.//{%s}mw' % NS)
             if clitic_parts:
                 a = clitic_parts[0].findall('.//{%s}pos/{%s}c' % (NS, NS))
@@ -76,31 +78,6 @@ def compute_morpheme_length(attribs):
             else:
                 num_morphemes += 1
     return num_morphemes
-def get_prefixes(xmlword, NS):
-    prefixes = []
-    xmlprefixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mpfx' % (NS, NS, NS))
-    for xmlprefix in xmlprefixes:
-        prefixes.append(xmlprefix.text)
-    return prefixes
-
-
-def get_stem(xmlword, NS):
-    stem = ''
-    xmlstem = xmlword.findall('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS))
-    if xmlstem:
-        stem = xmlstem[0].text
-    return stem
-
-def get_suffixes(xmlword, NS):
-    suffixes = []
-        # why go down the path like this...?
-        # hopefully mk catches both suffixes and fusional suffixes
-    xml_suffixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS))
-    for xml_suffix in xml_suffixes:
-        suffixes.append(xml_suffix.text)
-        morpheme_length += 1
-    return suffixes
-
 
 
 
