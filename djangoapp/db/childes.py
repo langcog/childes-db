@@ -23,6 +23,7 @@ import copy
 from nltk.util import flatten
 from nltk.corpus.reader.util import concat
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
+from db.reader_utils import *
 
 # to resolve the namespace issue
 NS = 'http://www.talkbank.org/ns/talkbank'
@@ -248,29 +249,9 @@ class CHILDESCorpusReader(XMLCorpusReader):
     def _getMLU(self, fileid, speaker):
         sents = self._get_words(fileid, speaker=speaker, sent=True, stem=True,
                     relation=False, pos=True, strip_space=True, replace=True)
-        results = []
-        lastSent = []
-        numFillers = 0
-        sentDiscount = 0
-        for sent in sents:
-            posList = [pos for (word,pos) in sent]
-            # if any part of the sentence is intelligible
-            if any(pos == 'unk' for pos in posList):
-                next
-            # if the sentence is null
-            elif sent == []:
-                next
-            # if the sentence is the same as the last sent
-            elif sent == lastSent:
-                next
-            else:
-                results.append([word for (word,pos) in sent])
-                # count number of fillers
-                if len(set(['co',None]).intersection(posList)) > 0:
-                    numFillers += posList.count('co')
-                    numFillers += posList.count(None)
-                    sentDiscount += 1
-            lastSent = sent
+
+        results, lastSent, numFillers, sentDiscount = mlu_calc_components(sents)
+
         try:
             thisWordList = flatten(results)
             # count number of morphemes
@@ -359,26 +340,32 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
         # do i have to make sure this doesn't belong to the clitic...
         # TODO comment xml structure here. also get mor first
-        prefixes = []
-        xmlprefixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mpfx' % (NS, NS, NS))
-        for xmlprefix in xmlprefixes:
-            prefixes.append(xmlprefix.text)
-            morpheme_length += 1
+        prefixes = get_list_morphemes('.//{%s}mor/{%s}mw/{%s}mpfx' % (NS, NS, NS), xmlword)
+        #morpheme_length += len(prefixes)
         prefix = ' '.join(prefixes)
 
-        pos = ''
-        xml_pos_category = xmlword.findall('.//{%s}mor/{%s}mw/{%s}pos/{%s}c' % (NS, NS, NS, NS))
-        if xml_pos_category:
-            pos = xml_pos_category[0].text
-            xml_pos_subcategories = xmlword.findall('.//{%s}mor/{%s}mw/{%s}pos/{%s}s' % (NS, NS, NS, NS))
-            for xml_pos_subcategory in xml_pos_subcategories:
-                pos += ":" + xml_pos_subcategory.text
+        pos = get_single_morpheme('.//{%s}mor/{%s}mw/{%s}pos/{%s}c' % (NS, NS, NS, NS), xmlword)
 
+        stem = get_single_morpheme('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS), xmlword)
+        #morpheme_length += 1
+
+        suffixes = get_list_morphemes('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS), xmlword)
+        #morpheme_length += len(suffixes)
+        suffix = " ".join(suffixes)
+
+        english_translation = get_single_morpheme('.//{%s}mor/{%s}menx' % (NS, NS), xmlword)
+        clitic = get_single_morpheme('.//{%s}mor/{%s}mor-post' % (NS, NS), xmlword)
+        #morpheme_length += 1
+        morpheme_length = compute_morpheme_length([prefixes, stem, suffixes, clitic])
+
+        """
         stem = ''
         xmlstem = xmlword.findall('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS))
         if xmlstem:
             stem = xmlstem[0].text
             morpheme_length += 1
+
+        
 
         suffixes = []
         # why go down the path like this...?
@@ -406,6 +393,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 c = clitic_parts[0].findall('.//{%s}mk' % NS)
                 clitic = " ".join([a[0].text if a else "", b[0].text if b else "", c[0].text if c else ""])
             morpheme_length += 1
+        """
 
         return prefix, pos, stem, suffix, english_translation, clitic, morpheme_length if morpheme_length > 0 else None
 
