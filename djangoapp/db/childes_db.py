@@ -25,7 +25,7 @@ import numpy as np
 import sys
 import time
 
-def populate_db(collection_root, selected_collection=None, parallelize=True):    
+def populate_db(collection_root, selected_collection=None, parallelize=False):    
 
     populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()
@@ -154,6 +154,17 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
     for sent in sents:
 
         # TODO use map instead of tuple
+        import pdb
+        pdb.set_trace()
+        uID = int(sent['uID'].replace("u", "")) + 1
+        speaker_code = sent['speaker']
+        terminator = sent['term']
+        annotations = sent['annotations'] #do we use this?
+        media = sent['media']
+        tokens = sent['tokens']
+        actual_pho = sent['actual_pho']
+        model_pho = sent['model_pho']
+        """
         uID = int(sent[0].replace("u", "")) + 1
         speaker_code = sent[1]
         terminator = sent[2]
@@ -163,7 +174,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         actual_pho = sent[6]
         model_pho = sent[7]
 
-
+        """
         # TODO use map code: participant object
         for participant in participants:
             if participant.code == speaker_code:

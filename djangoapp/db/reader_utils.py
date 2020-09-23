@@ -79,6 +79,103 @@ def compute_morpheme_length(attribs):
                 num_morphemes += 1
     return num_morphemes
 
+#Helper functions for get_custom_sents
+
+def get_annotations(xmlsent):
+    """
+    TODO figure out this docstring
+    """
+    annotations = []
+    annotation_elements = xmlsent.findall(".//{%s}a" % NS)
+    for element in annotation_elements:
+        annotation = {}
+        annotation['type'] = element.attrib.get('type')
+        annotation['flavor'] = element.attrib.get('flavor')
+        annotation['who'] = element.attrib.get('who')
+        annotation['text'] = element.text
+        annot = {'type': element.attrib.get('type'), 'flavor': element.attrib.get('flavor'), 
+        'who': element.attrib.get('who'), 'text': element.text}
+        annotations.append(annot)
+    return annotations
+
+def get_media_info(xmlsent):
+    """
+    Outputs a dictionary containing information about the audio file corresponding to xmlsent, 
+    if it exists
+    """
+    media = {}
+    media_element = xmlsent.findall(".//{%s}media" % NS)
+
+    if media_element:
+        media_element = media_element[0]
+        media = {'start': media_element.attrib['start'],
+                'end': media_element.attrib['end'],
+                'unit': media_element.attrib['unit']
+        }
+    return media
+
+def word_to_gloss(xmlword, sentID):
+    gloss = ''
+    xstr = lambda s: "" if s is None else s
+
+    if xmlword.find('.//{%s}langs' % (NS)):
+        xmlword.text = xmlword.find('.//{%s}langs' % (NS)).tail
+
+    # handles compounds and ignores shortenings (?)
+    text_tags = ["{%s}wk" % NS, "{%s}p" % NS, "{%s}shortening" % NS]
+    if xmlword.findall('*'):
+        word_tags = xmlword.findall('*')
+        text = xstr(xmlword.text)
+        for word_tag in word_tags:
+            if word_tag.tag in text_tags:
+                if word_tag.tag == "{%s}wk" % NS:
+                    text += "+"
+                text += xstr(word_tag.text) + xstr(word_tag.tail)
+        xmlword.text = text
+
+    if xmlword.text:
+        #word = xmlword.text
+        glosss = xmlword.text.strip()
+    else:
+        print('empty word in sentence '+ str(sentID))
+    return gloss
+
+def replacement_token_data(xmlword):
+    replacements = []
+    relations = []
+
+    global_morphology = {
+        'prefix' : [],
+        'pos': [],
+        'stem': [],
+        'suffix': [],
+        'english': [],
+        'clitic': [],
+        'morpheme_length': None
+    }
+    children = xmlword.findall('.//{%s}w' % NS)
+    for child in children:
+        if child.text:
+            replacements.append(child.text)
+
+        child_morphology = self._get_morphology(child)
+
+        for key in child_morphology.keys():
+            if child_morphology[key]:
+                if key == 'morpheme_length':
+                    global_morphology[key] += morpheme_length_result
+                else:
+                    value = child_morphology[key]
+                    #FIXME Can we do global_morphology[key].append(value)?
+                    prev_global_value = global_morphology[key]
+                    prev_global_value.append(value)
+                    global_morphology[key] = prev_global_value
+
+        relation_result = self._get_relation(child)
+        if relation_result:
+            relations.append(relation_result)
+
+    return replacements, relations, global_morphology, len(children)
 
 
 
