@@ -405,6 +405,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
 
             # TODO confusing tuple structure, use map
+            utt = {}
 
             utt = ()
 
@@ -413,7 +414,10 @@ class CHILDESCorpusReader(XMLCorpusReader):
             # place this in map
             speaker = xmlsent.get('who') # ME
 
-            utt += (sentID, speaker)
+            utt['sent_id'] = sentID
+            utt['speaker'] = speaker
+
+            #utt += (sentID, speaker)
 
             tokens = []
 
@@ -423,7 +427,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
             # extract utterance terminator
             terminator = xmlsent.find(".//{%s}t" % NS).attrib['type']
-            utt += (terminator,)
+            utt['term'] = terminator
+            #utt += (terminator,)
 
             # get dependent tiers / annotations
             # TODO get a bunch of stuff and return in convenient format
@@ -437,7 +442,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 annotation['text'] = element.text
                 annotations.append(annotation)
 
-            utt += (annotations,)
+            #utt += (annotations,)
+            utt['annotations'] = annotations
             # does this capture the phonetic tier?
 
             # extract media info, if it exists
@@ -449,7 +455,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 media['end'] = media_element[0].attrib['end']
                 media['unit'] = media_element[0].attrib['unit']
 
-            utt += (media,)
+            #utt += (media,)
+            utt['media'] = media
 
 
             # Pull out the phonology tiers
@@ -462,6 +469,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 actual_pho = []
                 model_pho = []
 
+            utt['actual_pho'] = actual_pho
+            utt['model_pho'] = model_pho
             for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
                 # skip the replacements of a word - they've already been considered
@@ -614,7 +623,9 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 tokens.append(token)
                 # if suffixStem:
                 #     sents.append(suffixStem)
-            results2.append(utt + (tokens,) + (actual_pho,) + (model_pho,))
+            utt['tokens'] = tokens
+            results2.append(utt)
+            #results2.append(utt + (tokens,) + (actual_pho,) + (model_pho,))
         return results2
 
     def _get_words(self, fileid, speaker, sent, stem, relation, pos,
