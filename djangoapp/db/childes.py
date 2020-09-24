@@ -433,18 +433,25 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
             # extract media info, if it exists
             utt['media'] = get_media_info(xmlsent)
-            # Pull out the phonology tiers
+            token_phon_criteria = {} 
+            #Putting the booleans and transcriptions here for phonetic token extraction
+
             if fileHasPhonology:
+                        # Pull out the phonology tiers
                 actual_pho, model_pho = get_phonology(xmlsent, speaker, sentID, fileid)
                 num_tokens = len(xmlsent.findall('.//{%s}w' % NS))
                 include_actual_pho = num_tokens == len(actual_pho)
                 include_model_pho = num_tokens == len(model_pho)
+                token_phon_criteria = {'actual': {'include': include_actual_pho, 'phons': actual_pho},
+                        'model': {'include': include_model_pho, 'phons': model_pho}}
+
             else:
                 actual_pho = []
                 model_pho = []
 
             utt['actual_pho'] = actual_pho
             utt['model_pho'] = model_pho
+
             for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
                 # skip the replacements of a word - they've already been considered
@@ -452,79 +459,50 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     skip_replacement_counter -= 1
                     continue
 
-                token = {}
-
-                if xmlword.get('type') == 'omission':    #FIXME: What's the purpose of this?                
-                    continue
-
-                #xstr = lambda s: "" if s is None else unicode(s)
-                token['gloss'] = word_to_gloss(xmlword, sentID)                
-
-                # check if this is a replacement, and then build rep, stem, etc from children
-                if xmlword.find('.//{%s}replacement' % (NS)):
-                    # save children in replacement field
-                    # iterate over children
-                    replacements, relations, morphology, children_length = replacement_token_data(xmlword) 
-                    token['replacement'] = ' '.join(replacements)
-                    token['relation'] = ' '.join(relations)
-
-                    for k in global_morphology.keys():
-                        token[k] = ' '.join(global_morphology[k])
-                    token['morpheme_length'] = global_morphology['morpheme_length']
-
-                    skip_replacement_counter = children_length
-                else: # else get stem and pos for this word
-                    # word = word.strip()
-
-                    morph_dict = self._get_morphology(xmlword)
-                    token.update(morph_dict)
-                    # token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
-                    # token['pos'] = self._get_pos(xmlword, suffixStem)
-                    token['relation'] = self._get_relation(xmlword)
-
-
-
-                    # replacement_elems = filter(lambda x: x.tag == '{%s}w' % NS, [e for e in xmlword.iter() if e is not xmlword])
-                    # replacements = [r.text for r in replacement_elems]
-                    # replacement_str = ' '.join(replacements)
-                    # if replacement_str:
-                    #     token['replacement'] = replacement_str
-                    #     skip_replacement_counter = len(replacements)
-                # parent_map = dict((c, p) for p in tree.getiterator() for c in p)
-                #
-                # if parent_map.get(xmlword) and parent_map.get(xmlword).tag == '{%s}replacement' % NS:
-                #     last_token = tokens[len(tokens) - 1]
-                #     last_token['replacement'] = token['gloss']
-                #     continue # don't save this token in tokens array
-
-                        # strip tailing space
-                token_order += 1
-                token['order'] = token_order
-
-                # only include the phonetic information at the word level if it aligns with the set of words
-                if fileHasPhonology:
-                    if include_actual_pho:
-                        token['pho'] = actual_pho[(token_order -1)]
-                    else:
-                        # mismatch in actual_pho and utterance length; not including actual pho at the word level
-                        token['pho'] = ''
-                        
-                    if include_model_pho:
-                        token['mod'] = model_pho[(token_order -1)]
-                    else: 
-                        # mismatch in model_pho and utterance length; not including model pho at the word level
-                        token['mod'] = ''
-                else:
-                    # whole file does not have phonology
-                    token['pho'] = ''
-                    token['mod'] = ''
-
-                tokens.append(token)
+                token, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
+                sentID, fileHasPhonology, token_phon_criteria, token_order)
+                if token:
+                    tokens.append(token)
                 # if suffixStem:
                 #     sents.append(suffixStem)
             utt['tokens'] = tokens
             processed_sents.append(utt)
         return processed_sents
+
+    def get_token_for_utterance(self, xmlword, skip_replacement_counter, sentID, fileHasPhonology, phon_criteria, token_order):
+        if xmlword.get('type') == 'omission':                    
+            return
+        
+        token = {}
+        #xstr = lambda s: "" if s is None else unicode(s)
+        token['gloss'] = word_to_gloss(xmlword, sentID)                
+
+        # check if this is a replacement, and then build rep, stem, etc from children
+        if xmlword.find('.//{%s}replacement' % (NS)):
+            # save children in replacement field
+            # iterate over children
+            replacements, relations, morphology, children_length = replacement_token_data(xmlword) 
+            token['replacement'] = ' '.join(replacements)
+            token['relation'] = ' '.join(relations)
+
+            for k in global_morphology.keys():
+                token[k] = ' '.join(morphology[k])
+            token['morpheme_length'] = morphology['morpheme_length']
+
+            skip_replacement_counter = children_length
+        else: # else get stem and pos for this word
+            # word = word.strip()
+
+            morph_dict = self._get_morphology(xmlword)
+            token.update(morph_dict)
+            # token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
+            # token['pos'] = self._get_pos(xmlword, suffixStem)
+            token['relation'] = self._get_relation(xmlword)
+        token_order += 1
+        token['order'] = token_order
+
+        token = get_token_phonology(token, fileHasPhonology, phon_criteria, token_order)
+        return token, skip_replacement_counter
 
     def _get_words(self, fileid, speaker, sent, stem, relation, pos,
             strip_space, replace):
