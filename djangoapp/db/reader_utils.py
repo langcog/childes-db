@@ -77,6 +77,8 @@ def compute_morpheme_length(attribs):
                 num_morphemes += len(m)
             else:
                 num_morphemes += 1
+    if num_morphemes == 0: #To be consistent with the previous functionality
+        return None
     return num_morphemes
 
 #Helper functions for get_custom_sents
@@ -135,47 +137,10 @@ def word_to_gloss(xmlword, sentID):
 
     if xmlword.text:
         #word = xmlword.text
-        glosss = xmlword.text.strip()
+        gloss = xmlword.text.strip()
     else:
         print('empty word in sentence '+ str(sentID))
     return gloss
-
-def replacement_token_data(xmlword):
-    replacements = []
-    relations = []
-
-    global_morphology = {
-        'prefix' : [],
-        'pos': [],
-        'stem': [],
-        'suffix': [],
-        'english': [],
-        'clitic': [],
-        'morpheme_length': None
-    }
-    children = xmlword.findall('.//{%s}w' % NS)
-    for child in children:
-        if child.text:
-            replacements.append(child.text)
-
-        child_morphology = self._get_morphology(child)
-
-        for key in child_morphology.keys():
-            if child_morphology[key]:
-                if key == 'morpheme_length':
-                    global_morphology[key] += morpheme_length_result
-                else:
-                    value = child_morphology[key]
-                    #FIXME Can we do global_morphology[key].append(value)?
-                    prev_global_value = global_morphology[key]
-                    prev_global_value.append(value)
-                    global_morphology[key] = prev_global_value
-
-        relation_result = self._get_relation(child)
-        if relation_result:
-            relations.append(relation_result)
-
-    return replacements, relations, global_morphology, len(children)
 
 def get_token_phonology(token, fileHasPhonology, phon_criteria, token_order):
     """

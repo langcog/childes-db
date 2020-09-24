@@ -355,12 +355,14 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
         #Returns zero if the list has all empty strings or lists
         morpheme_length = compute_morpheme_length([prefixes, stem, suffixes, clitic])
-        if morpheme_length > 0:
-            return {'prefix': prefix, 'pos': pos, 'stem': stem, 'english': english_translation, 'clitic': clitic,
-            'morpheme_len': morpheme_length}
+        #if morpheme_length > 0:
+        #The above functions now return empty strings if there's no morphology parse info, none case is handled in
+        #compute_morpheme_length
+        return {'prefix': prefix, 'pos': pos, 'stem': stem, 'english': english_translation, 'clitic': clitic,
+            'morpheme_length': morpheme_length}
 
-        else:
-            return None
+        #else:
+        #return None
 
 
 
@@ -458,7 +460,6 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 if skip_replacement_counter > 0:
                     skip_replacement_counter -= 1
                     continue
-
                 token, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
                 sentID, fileHasPhonology, token_phon_criteria, token_order)
                 if token:
@@ -471,7 +472,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
     def get_token_for_utterance(self, xmlword, skip_replacement_counter, sentID, fileHasPhonology, phon_criteria, token_order):
         if xmlword.get('type') == 'omission':                    
-            return
+            return None, skip_replacement_counter
         
         token = {}
         #xstr = lambda s: "" if s is None else unicode(s)
@@ -481,18 +482,18 @@ class CHILDESCorpusReader(XMLCorpusReader):
         if xmlword.find('.//{%s}replacement' % (NS)):
             # save children in replacement field
             # iterate over children
-            replacements, relations, morphology, children_length = replacement_token_data(xmlword) 
+            replacements, relations, morphology, children_length = self.replacement_token_data(xmlword) 
             token['replacement'] = ' '.join(replacements)
             token['relation'] = ' '.join(relations)
 
-            for k in global_morphology.keys():
-                token[k] = ' '.join(morphology[k])
+            for k in morphology.keys():
+                if k != 'morpheme_length':
+                    token[k] = ' '.join(morphology[k])
             token['morpheme_length'] = morphology['morpheme_length']
 
             skip_replacement_counter = children_length
         else: # else get stem and pos for this word
             # word = word.strip()
-
             morph_dict = self._get_morphology(xmlword)
             token.update(morph_dict)
             # token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
@@ -503,6 +504,46 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
         token = get_token_phonology(token, fileHasPhonology, phon_criteria, token_order)
         return token, skip_replacement_counter
+
+    def replacement_token_data(self, xmlword):
+        replacements = []
+        relations = []
+
+        global_morphology = {
+            'prefix' : [],
+            'pos': [],
+            'stem': [],
+            'suffix': [],
+            'english': [],
+            'clitic': [],
+            'morpheme_length': None
+        }
+        children = xmlword.findall('.//{%s}w' % NS)
+        for child in children:
+            if child.text:
+                replacements.append(child.text)
+
+            child_morphology = self._get_morphology(child)
+
+            for key in child_morphology.keys():
+                if child_morphology[key]:
+                    if key == 'morpheme_length':
+                        if child_morphology['morpheme_length'] != None:
+                            if global_morphology['morpheme_length'] == None:
+                                global_morphology['morpheme_length'] = 0
+                            global_morphology[key] += child_morphology['morpheme_length']
+                    else:
+                        value = child_morphology[key]
+                        #FIXME Can we do global_morphology[key].append(value)?
+                        prev_global_value = global_morphology[key]
+                        prev_global_value.append(value)
+                        global_morphology[key] = prev_global_value
+
+            relation_result = self._get_relation(child)
+            if relation_result:
+                relations.append(relation_result)
+
+        return replacements, relations, global_morphology, len(children)
 
     def _get_words(self, fileid, speaker, sent, stem, relation, pos,
             strip_space, replace):
