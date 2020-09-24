@@ -185,15 +185,15 @@ def get_token_phonology(token, fileHasPhonology, phon_criteria, token_order):
                         'model': {'include': include_model_pho, 'phons': model_pho}}
     """
     if fileHasPhonology:
-        if token_order['actual']['include']:
-            actual_pho = token_order['actual']['phons']
+        if phon_criteria['actual']['include']:
+            actual_pho = phon_criteria['actual']['phons']
             token['pho'] = actual_pho[(token_order -1)]
         else:
             # mismatch in actual_pho and utterance length; not including actual pho at the word level
             token['pho'] = ''
             
-        if token_order['model']['include']:
-            model_pho = token_order['actual']['phons']
+        if phon_criteria['model']['include']:
+            model_pho = phon_criteria['actual']['phons']
             token['mod'] = model_pho[(token_order -1)]
         else: 
             # mismatch in model_pho and utterance length; not including model pho at the word level
