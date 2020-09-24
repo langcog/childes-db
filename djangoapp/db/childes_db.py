@@ -154,9 +154,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
     for sent in sents:
 
         # TODO use map instead of tuple
-        import pdb
-        pdb.set_trace()
-        uID = int(sent['uID'].replace("u", "")) + 1
+        uID = int(sent['sent_id'].replace("u", "")) + 1
         speaker_code = sent['speaker']
         terminator = sent['term']
         annotations = sent['annotations'] #do we use this?
@@ -164,17 +162,6 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         tokens = sent['tokens']
         actual_pho = sent['actual_pho']
         model_pho = sent['model_pho']
-        """
-        uID = int(sent[0].replace("u", "")) + 1
-        speaker_code = sent[1]
-        terminator = sent[2]
-        # annotations = sent[3]
-        media = sent[4]
-        tokens = sent[5]
-        actual_pho = sent[6]
-        model_pho = sent[7]
-
-        """
         # TODO use map code: participant object
         for participant in participants:
             if participant.code == speaker_code:
@@ -220,13 +207,6 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             language=transcript.language
         )
         
-        """
-        utt_gloss = []
-        utt_stem = []
-        utt_relation = []
-        utt_pos = []
-        utt_num_morphemes = None
-        """
         process_utterance_tokens(tokens, utterance, token_store, utterance_type, speaker, transcript, target_child)
     
     t1 = time.time()        
