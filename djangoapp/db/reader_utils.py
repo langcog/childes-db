@@ -1,7 +1,10 @@
 import pdb
 NS = 'http://www.talkbank.org/ns/talkbank'
 
-def mlu_calc_components(sents):    
+def mlu_calc_components(sents):
+    """
+    Helper function for _get_MLU, populates the variables used in the try-catch loops
+    """
     results = []
     lastSent = []
     numFillers = 0
@@ -85,7 +88,7 @@ def compute_morpheme_length(attribs):
 
 def get_annotations(xmlsent):
     """
-    TODO figure out this docstring
+    Extracting annotations from a sentence (from experimenters/corpus)
     """
     annotations = []
     annotation_elements = xmlsent.findall(".//{%s}a" % NS)
@@ -117,7 +120,7 @@ def get_media_info(xmlsent):
     return media
 
 def extract_gloss(xmlword, sentID):
-    #TODO rename something better because it is also in the get_words fn
+    #Processes xmlword to create a gloss
     gloss = ''
     xstr = lambda s: "" if s is None else s
 

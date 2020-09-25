@@ -353,18 +353,9 @@ class CHILDESCorpusReader(XMLCorpusReader):
         english_translation = get_single_morpheme('.//{%s}mor/{%s}menx' % (NS, NS), xmlword)
         clitic = get_single_morpheme('.//{%s}mor/{%s}mor-post' % (NS, NS), xmlword)
 
-        #Returns zero if the list has all empty strings or lists
         morpheme_length = compute_morpheme_length([prefixes, stem, suffixes, clitic])
-        #if morpheme_length > 0:
-        #The above functions now return empty strings if there's no morphology parse info, none case is handled in
-        #compute_morpheme_length
         return {'prefix': prefix, 'pos': pos, 'stem': stem, 'english': english_translation, 'clitic': clitic,
             'morpheme_length': morpheme_length}
-
-        #else:
-        #return None
-
-
 
     def _get_stem(self, xmlword):
         # stem
@@ -411,11 +402,11 @@ class CHILDESCorpusReader(XMLCorpusReader):
         processed_sents = []
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
 
-            # TODO confusing tuple structure, use map
+            # DONE confusing tuple structure, use map
             utt = {}
 
             sentID = xmlsent.get('uID')
-            speaker = xmlsent.get('who') # ME
+            speaker = xmlsent.get('who')
 
             utt['sent_id'] = sentID
             utt['speaker'] = speaker
@@ -431,12 +422,11 @@ class CHILDESCorpusReader(XMLCorpusReader):
             # get dependent tiers / annotations
             # TODO get a bunch of stuff and return in convenient format
             utt['annotations'] = get_annotations(xmlsent)
-            # does this capture the phonetic tier?
 
             # extract media info, if it exists
             utt['media'] = get_media_info(xmlsent)
             token_phon_criteria = {} 
-            #Putting the booleans and transcriptions here for phonetic token extraction
+            #Putting the booleans and transcriptions here for phonetic token extraction (see get_token_phonology in reader_utils)
 
             if fileHasPhonology:
                         # Pull out the phonology tiers
@@ -470,7 +460,9 @@ class CHILDESCorpusReader(XMLCorpusReader):
             processed_sents.append(utt)
         return processed_sents
 
-    def get_token_for_utterance(self, xmlword, skip_replacement_counter, sentID, fileHasPhonology, phon_criteria, token_order):
+    def get_token_for_utterance(self, xmlword, skip_replacement_counter,
+     sentID, fileHasPhonology, phon_criteria, token_order):
+     #Keeping the token populating code in a separate function 
         if xmlword.get('type') == 'omission':                    
             return None, skip_replacement_counter
         
@@ -506,6 +498,12 @@ class CHILDESCorpusReader(XMLCorpusReader):
         return token, skip_replacement_counter
 
     def replacement_token_data(self, xmlword):
+        """
+        If xmlword has replacements, iterates through all the children of the token 
+        and gets the following attributes: morphology (prefix, suffix, PoS, stem, English translation, clitic,
+        morpheme length), replacement text, and dependency relations.
+        Also outputs the number children such that 
+        """
         replacements = []
         relations = []
 
