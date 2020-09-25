@@ -116,7 +116,8 @@ def get_media_info(xmlsent):
         }
     return media
 
-def word_to_gloss(xmlword, sentID):
+def extract_gloss(xmlword, sentID):
+    #TODO rename something better because it is also in the get_words fn
     gloss = ''
     xstr = lambda s: "" if s is None else s
 

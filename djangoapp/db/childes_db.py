@@ -25,7 +25,7 @@ import numpy as np
 import sys
 import time
 
-def populate_db(collection_root, selected_collection=None, parallelize=False):    
+def populate_db(collection_root, selected_collection=None, parallelize=True):    
 
     populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()

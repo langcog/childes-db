@@ -476,7 +476,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         
         token = {}
         #xstr = lambda s: "" if s is None else unicode(s)
-        token['gloss'] = word_to_gloss(xmlword, sentID)                
+        token['gloss'] = extract_gloss(xmlword, sentID)                
 
         # check if this is a replacement, and then build rep, stem, etc from children
         if xmlword.find('.//{%s}replacement' % (NS)):
@@ -566,30 +566,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     infl = None ; suffixStem = None
 
                     # getting replaced words
-                    xstr = lambda s: "" if s is None else unicode(s)
-                    if replace and xmlword.find('.//{%s}replacement' % (NS)):
-                        continue
-
-                    if xmlword.find('.//{%s}langs' % (NS)):
-                        xmlword.text = xmlword.find('.//{%s}langs' % (NS)).tail
-
-                    text_tags = ["{%s}wk" % NS, "{%s}p" % NS, "{%s}shortening" % NS]
-                    if xmlword.findall('*'):
-                        word_tags = xmlword.findall('*')
-                        text = xstr(xmlword.text)
-                        for word_tag in word_tags:
-                            if word_tag.tag in text_tags:
-                                if word_tag.tag == "{%s}wk" % NS:
-                                    text += "+"
-                                text += xstr(word_tag.text) + xstr(word_tag.tail)
-                        xmlword.text = text
-
-                    if xmlword.text:
-                        word = xmlword.text
-                    else:
-                        print('empty word in sentence '+str(sentID))
-                        word = ''
-
+                    word = extract_gloss(xmlword, sentID)
                     # strip tailing space
                     if strip_space:
                         word = word.strip()
