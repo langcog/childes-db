@@ -450,7 +450,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 if skip_replacement_counter > 0:
                     skip_replacement_counter -= 1
                     continue
-                token, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
+                token, token_order, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
                 sentID, fileHasPhonology, token_phon_criteria, token_order)
                 if token:
                     tokens.append(token)
@@ -495,7 +495,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         token['order'] = token_order
 
         token = get_token_phonology(token, fileHasPhonology, phon_criteria, token_order)
-        return token, skip_replacement_counter
+        return token, token_order, skip_replacement_counter
 
     def replacement_token_data(self, xmlword):
         """
