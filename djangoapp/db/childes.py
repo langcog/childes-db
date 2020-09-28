@@ -450,6 +450,8 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 if skip_replacement_counter > 0:
                     skip_replacement_counter -= 1
                     continue
+                import pdb
+                #pdb.set_trace()
                 token, token_order, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
                 sentID, fileHasPhonology, token_phon_criteria, token_order)
                 if token:
@@ -464,7 +466,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
      sentID, fileHasPhonology, phon_criteria, token_order):
      #Keeping the token populating code in a separate function 
         if xmlword.get('type') == 'omission':                    
-            return None, skip_replacement_counter
+            return None, token_order, skip_replacement_counter
         
         token = {}
         #xstr = lambda s: "" if s is None else unicode(s)
