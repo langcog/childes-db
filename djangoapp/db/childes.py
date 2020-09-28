@@ -354,7 +354,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
         clitic = get_single_morpheme('.//{%s}mor/{%s}mor-post' % (NS, NS), xmlword)
 
         morpheme_length = compute_morpheme_length([prefixes, stem, suffixes, clitic])
-        return {'prefix': prefix, 'pos': pos, 'stem': stem, 'english': english_translation, 'clitic': clitic,
+        return {'prefix': prefix, 'pos': pos, 'stem': stem, 'english': english_translation, 'clitic': clitic, 'suffix': suffix
             'morpheme_length': morpheme_length}
 
     def _get_stem(self, xmlword):
@@ -450,7 +450,6 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 if skip_replacement_counter > 0:
                     skip_replacement_counter -= 1
                     continue
-                #pdb.set_trace()
                 token, token_order, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
                 sentID, fileHasPhonology, token_phon_criteria, token_order)
                 if token:
@@ -463,7 +462,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
 
     def get_token_for_utterance(self, xmlword, skip_replacement_counter,
      sentID, fileHasPhonology, phon_criteria, token_order):
-     #Keeping the token populating code in a separate function 
+     #Keeping the token populating code in a separate function
         if xmlword.get('type') == 'omission':                    
             return None, token_order, skip_replacement_counter
         
