@@ -450,7 +450,6 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 if skip_replacement_counter > 0:
                     skip_replacement_counter -= 1
                     continue
-                import pdb
                 #pdb.set_trace()
                 token, token_order, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
                 sentID, fileHasPhonology, token_phon_criteria, token_order)
