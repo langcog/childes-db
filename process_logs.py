@@ -2,7 +2,7 @@ import pandas as pd
 import MySQLdb
 import os
 from tqdm import tqdm
-from check_refactor import ec2_params, local_params, connect_to_childes
+from compare_refactor import ec2_params, local_params, connect_to_childes
 
 """
 Going through logs (currently contain EC2 transcript ID and local transcript ID only) so we can add some more useful information:
