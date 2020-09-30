@@ -162,7 +162,7 @@ def get_token_phonology(token, fileHasPhonology, phon_criteria, token_order):
             token['pho'] = ''
             
         if phon_criteria['model']['include']:
-            model_pho = phon_criteria['actual']['phons']
+            model_pho = phon_criteria['model']['phons']
             token['mod'] = model_pho[(token_order -1)]
         else: 
             # mismatch in model_pho and utterance length; not including model pho at the word level
