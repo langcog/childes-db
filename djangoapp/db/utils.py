@@ -56,15 +56,19 @@ def parse_age(age):
 def update_age(participant, age):
     if age:
         if not participant.min_age:
+            print('Setting min age!')
             participant.min_age = age
 
         if participant.min_age and age < participant.min_age:
+            print('Updating age!')
             participant.min_age = age
 
         if not participant.max_age:
+            print('Setting max age!')
             participant.max_age = age
 
         if participant.max_age and age > participant.max_age:
+            print('Updating age!')
             participant.max_age = age
 
 def prettify(ET, fname):

@@ -6,7 +6,7 @@ import os
 
 def get_or_create_participant(corpus, attr_map, target_child=None):
     
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker    
 
     if not attr_map:
         return None
@@ -18,6 +18,9 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
     language = attr_map.get('language')
     group = attr_map.get('group')
     sex = attr_map.get('sex')
+    # if sex is None:
+    #     if code == 'CHI' and age is not None:            
+    #         print('~~~~~~~~~~ "SEX IS NONE in ATTR MAP" ~~~~~~~~~~~~~~~~~~')    
     ses = attr_map.get('SES')
     education = attr_map.get('education')
     custom = attr_map.get('custom')
@@ -31,7 +34,7 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
 
     participant = query_set.first()
 
-    if not participant:
+    if not participant:        
         participant = Participant.objects.create(
             code=code,
             name=name,
@@ -49,6 +52,7 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
         )
         if target_child:
             participant.target_child = target_child
+           
 
     update_age(participant, age)
 
@@ -97,9 +101,20 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
     target_child = None
     nltk_target_child, nltk_participants = extract_target_child(nltk_participants)
 
+    # print('~~~~~~~~~~ "Target Child Properties from NLTK Extraction" ~~~~~~~~~~~~~~~~~~')
+    # print('File ID')
+    # print(fileid)
+    # print('Name:')
+    # print(nltk_target_child['name'])
+    # print('Sex:')
+    # print(nltk_target_child['sex'])
+    # print('Age:')
+    # print(nltk_target_child['age'])
+
     # Save target child object
     if nltk_target_child:
         # Get or create django participant object for target child
+
         target_child = get_or_create_participant(corpus, nltk_target_child)
 
         # This participant is its own target child
@@ -108,7 +123,40 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
         # Mark in transcript as well
         transcript.target_child = target_child
         transcript.target_child_name = target_child.name
-        transcript.target_child_age = target_child.age
+        transcript.target_child_age = target_child.age        
+        #if target_child.sex is None:
+        fid = 'File ID: '+str(fileid)+ ';'        
+        
+        
+        if len(nltk_target_child['name']) > 0:
+            print(fid + ' (nltk_target_child) ' + 'Name: '+nltk_target_child['name'])            
+        else:
+            print(fid + ' (nltk_target_child) ' + 'Name: undefined')
+
+        if len(nltk_target_child['sex']) > 0:
+            print(fid + ' (nltk_target_child) ' + 'Sex: '+nltk_target_child['sex'])            
+        else:
+            print(fid + ' (nltk_target_child) ' + 'Sex: undefined')
+        
+        if len(nltk_target_child['age']) > 0:
+            print(fid + ' (nltk_target_child) ' + 'Age: '+nltk_target_child['age'])            
+        else:
+            print(fid + ' (nltk_target_child) ' + 'Age: undefined')        
+
+
+        if target_child.name:
+            print(fid + ' (target_child) ' + 'Name: ' + target_child.name)            
+        else:
+            print(fid + ' (target_child) ' + 'Name: undefined')            
+        if target_child.sex:
+            print(fid + ' (target_child) ' + 'Sex: ' + target_child.sex)
+        else:
+            print(fid + ' (target_child) ' + 'Sex: undefined')
+        if target_child.age:
+            print(fid + ' (target_child) ' +'Age: ' + str(target_child.age))
+        else:
+            print(fid + ' (target_child) ' +'Age: undefined')
+        
         transcript.target_child_sex = target_child.sex
 
         target_child.save()
