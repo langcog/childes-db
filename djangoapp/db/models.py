@@ -6,7 +6,8 @@ from django.db.models import DO_NOTHING
 
 class Collection(Model):
     name = CharField(max_length=255, blank=True, default=None, null=True)
-
+    data_source = CharField(max_length=255, blank=True, default=None, null=True)
+    
     class Meta:
         app_label = 'db' # should we keep app label?
         db_table = 'collection'
@@ -16,7 +17,7 @@ class Corpus(Model):
     name = CharField(max_length=255, blank=True, default=None, null=True) # simple name
     collection = ForeignKey(Collection, blank=True, null=True, default=None, on_delete=DO_NOTHING)
     collection_name = CharField(max_length=255, blank=True, default=None, null=True)
-    source = CharField(max_length=255, blank=True, default=None, null=True)
+    data_source = CharField(max_length=255, blank=True, default=None, null=True)
 
     class Meta:
         app_label = 'db'
@@ -106,6 +107,9 @@ class Token(Model):
     language = CharField(max_length=255, blank=True, default=None, null=True)
     token_order = IntegerField(blank=True, null=True, default=None)
     utterance = ForeignKey(Utterance, blank=True, null=True, default=None, on_delete=DO_NOTHING)
+    head = ForeignKey(to='Token', null=True, related_name='token_head', on_delete=DO_NOTHING)
+    relation_to_head = CharField(max_length=255, blank=True, default=None, null=True)
+    #dependent = ForeignKey(to='Token', null=False, related_name='token_dependent', on_delete=DO_NOTHING) # one to many relationship
     replacement = CharField(max_length=255, blank=True, default=None, null=True)
     prefix = CharField(max_length=255, blank=True, default=None, null=True)
     part_of_speech = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)

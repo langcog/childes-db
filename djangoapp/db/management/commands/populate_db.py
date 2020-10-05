@@ -1,36 +1,25 @@
 import os
-from django.conf import settings
 from django.core.management import BaseCommand
 
 #The class must be named Command, and subclass BaseCommand
 class Command(BaseCommand):
     # Show this when the user types help
-    help = "My test command"
+    help = "Populate childes-db through Django"
 
     def add_arguments(self, parser):
-        parser.add_argument('--collection', help='Name of collection (e.g. Eng-NA, Spanish)')
+        parser.add_argument('--collection_root', help='Path to the collection(s) to process')
+        parser.add_argument('--collection', help='Name of collection (e.g. Eng-NA, Spanish) to process. If unspecified, will process all')
+        parser.add_argument('--data_source', help='Name of the data source, eg CHILDES or PhonBank')
 
     # A command must define handle()
     def handle(self, *args, **options):
 
-        #try:
-        from db.childes_db import populate_db
-        #except Exception as e:
-        #    print(e.args)
-        #    import pdb
-        #    pdb.set_trace()        
+        from db.childes_db import populate_db        
 
+        collection_root = options.get("collection_root")
         collection = options.get("collection")
+        data_source = options.get("data_source")
 
-        # TODO better organization of populate db, etc. maybe other file should be command
-        # TODO ability to select collection, choose multiple, and throw error if does not exist
-        # TODO wget updates?
+        populate_db(collection_root, data_source, collection)
 
-        populate_db(settings.DATA_XML_PATH, collection)
-
-        # if collection:
-        #     populate_db(os.path.join(settings.DATA_XML_PATH, collection))
-        # else:
-        #     # Import all collections
-        #     for collection in os.walk(settings.DATA_XML_PATH).next()[1]:
-        #         populate_db(os.path.join(settings.DATA_XML_PATH, collection))
+        

@@ -22,9 +22,10 @@ import functools
 import numpy as np
 import sys
 import time
+import fnmatch
 
 
-def populate_db(collection_root, selected_collection=None, parallelize=True):    
+def populate_db(collection_root, data_source, selected_collection=None, parallelize=True):    
 
     populate_db_start_time = time.time()
     multiprocessing.log_to_stderr()
@@ -41,7 +42,7 @@ def populate_db(collection_root, selected_collection=None, parallelize=True):
     for collection_name in next(os.walk(collection_root))[1]:       
         if selected_collection and collection_name != selected_collection:
             continue # skip it if it isn't the selected collection        
-        results.append(process_collection(collection_root, collection_name, pool, parallelize))
+        results.append(process_collection(collection_root, collection_name, data_source, pool, parallelize))
 
     if parallelize:
         pool.close()
@@ -49,24 +50,37 @@ def populate_db(collection_root, selected_collection=None, parallelize=True):
 
     print('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
 
-def process_collection(collection_root, collection_name, pool, parallelize):
+
+def list_directory(directory, type):
+    if type == 'folders':
+        return(os.walk(directory).__next__()[1])
+    if type == 'files':
+        return(os.walk(directory).__next__()[2])
+
+def process_collection(collection_root, collection_name, data_source, pool, parallelize):
     
     from db.models import Collection
 
     print('Processing collection '+collection_name+' at '+os.path.join(collection_root, collection_name))    
     t0 = time.time()
-    collection = Collection.objects.create(name=collection_name)
-
-    results = []
+    collection = Collection.objects.create(name=collection_name, data_source = data_source)
 
     # the top level of a collection is the corpora    
-    top_level_corpora_in_collection = [os.path.basename(os.path.normpath(x)) for x in glob.glob(os.path.join(collection_root, collection_name,'*/')) ]       
+    # top_level_corpora_in_collection = [os.path.basename(os.path.normpath(x)) for x in glob.glob(os.path.join(collection_root, collection_name,'*/')) ]       
 
-    print('Corpus contains '+str(len(top_level_corpora_in_collection)))
+    # presence of the zipfiles is what is used to determine what are top-level corpora
+    # should find all zipfiles and treat those as corpora
+    
+    corpora_to_process = []
+    for root, dirnames, filenames in os.walk(os.path.join(collection_root, collection_name)):
+        for filename in fnmatch.filter(filenames, '*.zip_placeholder'):
+            corpora_to_process.append(os.path.join(root, filename.replace('.zip_placeholder','')))    
+    print('Corpus contains '+str(len(corpora_to_process)) +' sub corpora')
 
     # apply_async
-    for corpus_name in top_level_corpora_in_collection:
-        results.append(process_corpus(os.path.join(collection_root, collection_name), corpus_name, collection_name, pool, parallelize))
+    results = []
+    for corpus_path in corpora_to_process:
+        results.append(process_corpus(corpus_path, os.path.basename(os.path.normpath(corpus_path)), collection_name, data_source, pool, parallelize))
 
     # dumb parallelization
     #results = Parallel(n_jobs=24)(delayed(process_corpus)(os.path.join(collection_root, collection_name), corpus_name, collection_name) for corpus_name in top_level_corpora_in_collection)
@@ -81,20 +95,19 @@ def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
     print('('+corpus_name+') Bulk write for '+data_type+' took '+str(round(time.time() - bulk_write_start_time, 3)))+'s'
 
         
-def process_corpus(corpus_root, corpus_name, collection_name, pool, parallelize):
+def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool, parallelize):
 
     from db.models import Collection, Corpus
 
     # retrieve the Collection from within the process so we don't need to pass the Django ORM object, which is unpickleable
-    collection = Collection.objects.get(name = collection_name)
-    corpus_path = os.path.join(corpus_root, corpus_name)
+    collection = Collection.objects.get(name = collection_name, data_source = data_source)
 
-    print('Processing corpus '+corpus_name+' at '+corpus_path)
+    print('Processing corpus '+corpus_name+' at '+corpus_root)
 
     processed_file_results = []
 
     dirs_with_xml = []
-    for root, dirs, files in os.walk(os.path.join(corpus_root, corpus_name)):
+    for root, dirs, files in os.walk(corpus_root):
         for file in files:
             if file.endswith(".xml"):
                 dirs_with_xml.append(root)
@@ -102,7 +115,7 @@ def process_corpus(corpus_root, corpus_name, collection_name, pool, parallelize)
 
     print('('+corpus_name+') Number of sub-directories in corpus: '+str(len(dirs_with_xml)))
     
-    corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name)
+    corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name, data_source = data_source)
     # here, creating a corpus for every subdirectory -- this is not right
     
     for dir_with_xml in dirs_with_xml:
@@ -231,7 +244,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
     
-    utterance_store = []
+    all_utterance_token_store = []
     token_store = []
     sents = nltk_corpus.get_custom_sents(fileid)    
     
@@ -302,7 +315,8 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utt_pos = []
         utt_num_morphemes = None
 
-        # TODO nltk token instead of token        
+        # TODO nltk token instead of token  
+        this_utterance_token_store = []
         for token in tokens:
             # TODO use null or blank?
             gloss = token.get('gloss', '')
@@ -351,7 +365,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 part_of_speech=part_of_speech,
                 utterance_type=utterance_type,
                 num_morphemes = num_morphemes,
-                relation=relation,
+                relation=relation,                
+                head = None,
+                relation_to_head = None, # relation to dependency requires one to many relationship
                 token_order=token_order,
                 speaker=speaker,
                 utterance=utterance, # what can we do here
@@ -369,9 +385,19 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 collection_name=transcript.collection.name,
                 language=transcript.language
             )
-            token_store.append(token_record)
+            this_utterance_token_store.append(token_record)
+
+
+        # # iteratively update these
+        # for i in range(len(tokens)):
+        #     if this_utterance_token_store[i].relation:
+        #         index, head, label = this_utterance_token_store[i].relation.split('|')
+        #         this_utterance_token_store[i].head = this_utterance_token_store[int(head)-1]
+        #         this_utterance_token_store[i].relation_to_head = label
 
         
+        all_utterance_token_store.append(this_utterance_token_store)
+
         # the following are built by iterating through each utterance
         utterance.gloss = ' '.join(utt_gloss)
         utterance.stem = ' '.join(utt_stem)
@@ -381,10 +407,12 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         utterance.num_tokens = len(utt_gloss)                
         utterance.save()
 
+    token_store = flatten_list(all_utterance_token_store)
+
     
     t1 = time.time()        
     Token.objects.bulk_create(token_store, batch_size=1000)
-    print("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
+    print("("+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
 
     TranscriptBySpeaker_store = []
@@ -449,7 +477,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
     #test3
     TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
     TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
-    print("("+transcript.corpus_name+'/'+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
+    print("("+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
 
     return('success')
     
