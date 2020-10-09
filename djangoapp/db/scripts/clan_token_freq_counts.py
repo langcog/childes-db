@@ -9,8 +9,9 @@ from pathlib import Path
 from collections import Counter
 
 # TODO put in settings file
-CHA_DIR = '/shared_hd0/corpora/childes_new/'
+CHA_DIR = '/shared_hd1/childes-db-cha/'
 PATTERN = 'Total number of different item types used\n(.*)Total number of items'
+CLAN_CMD = "~/utils/unix-clan/unix/bin/freq "
 SPEAKER_PATTERN = 'Speaker:(.*):'
 BY_SPEAKER = True
 
@@ -37,7 +38,7 @@ logger.setLevel(logging.INFO)
 
 
 def clan_unigram_count(path):
-    output = os.popen('freq ' + path).read()
+    output = os.popen(CLAN_CMD + path).read()
     subtotals = re.findall(PATTERN, output)
     return sum(map(int, subtotals))
 
@@ -48,7 +49,7 @@ def clan_unigram_count_by_token(path):
     # +d2: output in spreadsheet format
     # +o3 combine all speakers
     # -f: print output to tsv
-    tsv = os.popen('freq +r5 +r6 +d2 +o3 -f ' + path).read()
+    tsv = os.popen(CLAN_CMD + ' +r5 +r6 +d2 +o3 -f ' + path).read()
     word_freq_dict = {}
 
 
@@ -125,7 +126,6 @@ def write_to_file(corpus_results):
     #     filename = 'clan_counts.json'
     #     for corpus_dir, result_arr in corpus_results.iteritems():
     #         clan_counts[corpus_dir] = sum([r.get() for r in result_arr])
-
     filename = 'clan_token_counts.json'
 
     for corpus_dir, freq_arr in corpus_results.iteritems():

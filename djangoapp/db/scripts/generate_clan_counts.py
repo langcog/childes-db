@@ -6,9 +6,10 @@ import multiprocessing
 from pathlib import Path
 
 # TODO put in settings file
-CHA_DIR = '/shared_hd0/corpora/childes_new/'
+CHA_DIR = '/shared_hd1/childes-db-cha/'
 PATTERN = 'Total number of different item types used\n(.*)Total number of items'
 SPEAKER_PATTERN = 'Speaker:(.*):'
+CLAN_CMD = "~/utils/unix-clan/unix/bin/freq "
 BY_SPEAKER = True
 
 multiprocessing.log_to_stderr()
@@ -17,12 +18,12 @@ logger.setLevel(logging.INFO)
 
 
 def clan_unigram_count(path):
-    output = os.popen('freq ' + path).read()
+    output = os.popen(CLAN_CMD + path).read()
     subtotals = re.findall(PATTERN, output)
     return sum(map(int, subtotals))
 
 def clan_unigram_count_by_speaker(path):
-    output = os.popen('freq ' + path).read()
+    output = os.popen(CLAN_CMD + path).read()
     speakers = re.findall(SPEAKER_PATTERN, output)
     counts = re.findall(PATTERN, output)
     assert len(speakers) == len(counts)
@@ -58,13 +59,13 @@ if __name__ == '__main__':
     corpus_results = {}
 
     func = clan_unigram_count_by_speaker if BY_SPEAKER else clan_unigram_count
+    for collection_dir in os.listdir(CHA_DIR):
+        for corpus_dir in os.listdir(os.path.join(CHA_DIR, collection_dir)):
+            corpus_results[corpus_dir] = []
+            path_list = Path(os.path.join(CHA_DIR, collection_dir, corpus_dir)).glob('**/*.cha')
 
-    for corpus_dir in os.listdir(CHA_DIR):
-        corpus_results[corpus_dir] = []
-        path_list = Path(os.path.join(CHA_DIR, corpus_dir)).glob('**/*.cha')
-
-        for path in path_list:
-            corpus_results[corpus_dir].append(pool.apply_async(func, args=(str(path),)))
+            for path in path_list:
+                corpus_results[corpus_dir].append(pool.apply_async(func, args=(str(path),)))
 
     pool.close()
     write_to_file(corpus_results)
