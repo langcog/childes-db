@@ -12,7 +12,7 @@ import time
 from django import db
 from django.db.models import Avg, Count, Sum
 import db.models
-
+from django.db import transaction
 
 from db.lexical_diversity import mtld, hdd
 from db.childes import CHILDESCorpusReader
@@ -23,6 +23,31 @@ import numpy as np
 import sys
 import time
 import fnmatch
+import random
+
+import django.db.backends.utils
+from django.db import OperationalError
+import time
+
+original = django.db.backends.utils.CursorWrapper.execute
+
+#monkey-patch execute_wrapper to try repeatedly to write after a deadlock has cleared
+def execute_wrapper(*args, **kwargs):
+    attempts = 0
+    attempt_limit = 50
+    while attempts < attempt_limit:
+        try:
+            return original(*args, **kwargs)            
+        except OperationalError as e:
+            print('Deadlock... retry #'+str(attempts))            
+            code = e.args[0]
+            if attempts == (attempt_limit - 1) or code != 1213:
+                print('!!!! Deadlock retries exhausted !!!!!')
+                raise e
+            attempts += 1
+            time.sleep(1.0)
+
+django.db.backends.utils.CursorWrapper.execute = execute_wrapper
 
 
 def populate_db(collection_root, data_source, selected_collection=None, parallelize=True):    
@@ -48,6 +73,13 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
         pool.close()
         pool.join()
 
+        print('Results:') # this is where error messages should be caught    
+        flat_results = flatten_list(results)
+        for i in range(len(flat_results)):
+            print(str(i))
+            print(flat_results[i].get())
+        
+    
     print('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
 
 
@@ -65,11 +97,8 @@ def process_collection(collection_root, collection_name, data_source, pool, para
     t0 = time.time()
     collection = Collection.objects.create(name=collection_name, data_source = data_source)
 
-    # the top level of a collection is the corpora    
-    # top_level_corpora_in_collection = [os.path.basename(os.path.normpath(x)) for x in glob.glob(os.path.join(collection_root, collection_name,'*/')) ]       
-
     # presence of the zipfiles is what is used to determine what are top-level corpora
-    # should find all zipfiles and treat those as corpora
+    # should find all zipfile_placeholder markers, find corresponding unzipped directories, and treat those as corpora
     
     corpora_to_process = []
     for root, dirnames, filenames in os.walk(os.path.join(collection_root, collection_name)):
@@ -77,35 +106,23 @@ def process_collection(collection_root, collection_name, data_source, pool, para
             corpora_to_process.append(os.path.join(root, filename.replace('.zip_placeholder','')))    
     print('Corpus contains '+str(len(corpora_to_process)) +' sub corpora')
 
-    # apply_async
     results = []
     for corpus_path in corpora_to_process:
         results.append(process_corpus(corpus_path, os.path.basename(os.path.normpath(corpus_path)), collection_name, data_source, pool, parallelize))
 
-    # dumb parallelization
-    #results = Parallel(n_jobs=24)(delayed(process_corpus)(os.path.join(collection_root, collection_name), corpus_name, collection_name) for corpus_name in top_level_corpora_in_collection)
-
     print('Finished collection '+collection_name +' in '+str(round(time.time() - t0, 3))+' seconds')
-    return(results)
-
-def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
-
-    bulk_write_start_time = time.time()    
-    getattr(db.models, data_type).objects.bulk_create(records_to_write, batch_size)
-    print('('+corpus_name+') Bulk write for '+data_type+' took '+str(round(time.time() - bulk_write_start_time, 3)))+'s'
+    return(flatten_list(results))
 
         
 def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool, parallelize):
 
-    from db.models import Collection, Corpus
-
-    # retrieve the Collection from within the process so we don't need to pass the Django ORM object, which is unpickleable
     collection = Collection.objects.get(name = collection_name, data_source = data_source)
 
     print('Processing corpus '+corpus_name+' at '+corpus_root)
 
     processed_file_results = []
 
+    #enumerate all XML files in the corpus directory
     dirs_with_xml = []
     for root, dirs, files in os.walk(corpus_root):
         for file in files:
@@ -115,30 +132,28 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
 
     print('('+corpus_name+') Number of sub-directories in corpus: '+str(len(dirs_with_xml)))
     
-    corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name, data_source = data_source)
-    # here, creating a corpus for every subdirectory -- this is not right
-    
+    # Create the corpus object
+    corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name, data_source = data_source)    
+
+    if parallelize:
+        
+        from django import db
+        db.connections.close_all() #make sure all connections are closed before file processing
+
     for dir_with_xml in dirs_with_xml:
+
         print('('+corpus_name+') Processing XML directory: '+dir_with_xml)
-
-        nltk_corpus = CHILDESCorpusReader(dir_with_xml, '.*.xml')        
-        
-        # Iterate over all transcripts in this corpus        
-        
-        for fileid in nltk_corpus.fileids():
-
+        nltk_corpus = CHILDESCorpusReader(dir_with_xml, '.*.xml')                        
+        for fileid in nltk_corpus.fileids(): # Iterate over all transcripts in this corpus               
 
             if parallelize:
                 processed_file_results.append(pool.apply_async(process_file, args = (fileid, dir_with_xml, corpus, collection, nltk_corpus)))
 
             else: 
                 processed_file_results.append(process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus))
-        
-	
 
-
-        print('('+corpus_name+') Finished directory '+dir_with_xml)
-
+        print('('+corpus_name+') Finished directory '+dir_with_xml)    
+    
     return(processed_file_results)
     print('Finished corpus!')   
 
@@ -146,22 +161,16 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
 def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus):
 
     import django
-    django.setup()
+    django.db.connections.close_all() # make sure that there are no connnections to re-use
+    # Models need to be imported again because they are un-pickleable    
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
         
-
     # Create transcript and participant objects up front
-    transcript, participants, target_child = create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection)
-
-    # Ignore old filenames (due to recent update)
-    if not transcript:
-        return(None)
-
-    # necessary so child process doesn't inherit file descriptor
-    #db.connections.close_all()
+    transcript, participants, target_child = create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection, Transcript, Participant)
     
-    process_utterance_results = process_utterances(nltk_corpus, fileid, transcript, participants, target_child)
-
+    process_utterance_results = process_utterances(nltk_corpus, fileid, transcript, participants, target_child, Utterance, Token, TranscriptBySpeaker, TokenFrequency)
+    django.db.connections.close_all() # make sure that there are no connnections to re-use
+    
     return(process_utterance_results)
 
 
@@ -174,19 +183,11 @@ def flatten_list(hierarchical_list, list_name = None):
 
     return([item for sublist in hierarchical_list for item in sublist if item is not None])
 
-def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection):
-    
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection, Transcript, Participant):
 
     # Create transcript object
     metadata = nltk_corpus.corpus(fileid)[0]
-
-    # Return immediately if transcript has already been parsed
-    pid = metadata.get('PID')
-    if Transcript.objects.filter(pid=pid).exists():
-        return None, None, None
-
-    # check the whether os.path.join(corpus, fileId) is what we expect
+    pid = metadata.get('PID')    
 
     path_components = os.path.normpath(os.path.join(dir_with_xml, fileid)).split(os.sep)
     short_path = '/'.join(path_components[path_components.index(corpus.name)-1::])
@@ -214,7 +215,7 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
     # Save target child object
     if nltk_target_child:
         # Get or create django participant object for target child
-        target_child = get_or_create_participant(corpus, nltk_target_child)
+        target_child = get_or_create_participant(corpus, nltk_target_child, Participant)
 
         # This participant is its own target child
         target_child.target_child = target_child
@@ -232,23 +233,24 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
 
     # Save all other participants
     for nltk_participant in nltk_participants.values():
-        participant = get_or_create_participant(corpus, nltk_participant, target_child)
+        participant = get_or_create_participant(corpus, nltk_participant, Participant, target_child) 
         result_participants.append(participant)
 
     result_participants = [x for x in result_participants if x is not None]
 
     return transcript, result_participants, target_child
 
+def bulk_write(token_store, transcript, Token):
+    t1 = time.time()        
+    with transaction.atomic():
+        Token.objects.bulk_create(token_store, batch_size=1000)
+    print("("+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
-def process_utterances(nltk_corpus, fileid, transcript, participants, target_child):
-
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+def process_utterances(nltk_corpus, fileid, transcript, participants, target_child, Utterance, Token, TranscriptBySpeaker, TokenFrequency):
     
     all_utterance_token_store = []
     token_store = []
     sents = nltk_corpus.get_custom_sents(fileid)    
-    
-    #utterance_store = {}
 
     for sent in sents:
 
@@ -283,30 +285,31 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         media_start = float(media['start']) if media else None
         media_end = float(media['end']) if media else None
         media_unit = media['unit'] if media else None        
-
-        utterance = Utterance.objects.create(
-            speaker=speaker,
-            transcript=transcript,
-            utterance_order=uID,
-            type=utterance_type,
-            corpus=transcript.corpus,
-            corpus_name=transcript.corpus.name,
-            actual_phonology = ' '.join(actual_pho),
-            model_phonology = ' '.join(model_pho),
-            speaker_code=speaker.code,
-            speaker_name=speaker.name,
-            speaker_role=speaker.role,
-            target_child=target_child,
-            target_child_name=target_child.name if target_child else None,
-            target_child_age=target_child.age if target_child else None,
-            target_child_sex=target_child.sex if target_child else None,
-            media_start = media_start, # TODO use .get for map
-            media_end = media_end,
-            media_unit = media_unit,
-            collection=transcript.collection,
-            collection_name=transcript.collection.name,
-            language=transcript.language
-        )
+        
+        with transaction.atomic():
+            utterance = Utterance.objects.create(
+                speaker=speaker,
+                transcript=transcript,
+                utterance_order=uID,
+                type=utterance_type,
+                corpus=transcript.corpus,
+                corpus_name=transcript.corpus.name,
+                actual_phonology = ' '.join(actual_pho),
+                model_phonology = ' '.join(model_pho),
+                speaker_code=speaker.code,
+                speaker_name=speaker.name,
+                speaker_role=speaker.role,
+                target_child=target_child,
+                target_child_name=target_child.name if target_child else None,
+                target_child_age=target_child.age if target_child else None,
+                target_child_sex=target_child.sex if target_child else None,
+                media_start = media_start, # TODO use .get for map
+                media_end = media_end,
+                media_unit = media_unit,
+                collection=transcript.collection,
+                collection_name=transcript.collection.name,
+                language=transcript.language
+            )
         
 
         utt_gloss = []
@@ -325,7 +328,6 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             part_of_speech = token.get('pos', '')
             relation = token.get('relation', '')
             token_order = token.get('order', '')
-
             prefix = token.get('prefix', '')
             suffix = token.get('suffix', '')
             english = token.get('english', '')
@@ -365,9 +367,9 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 part_of_speech=part_of_speech,
                 utterance_type=utterance_type,
                 num_morphemes = num_morphemes,
-                relation=relation,                
-                head = None,
-                relation_to_head = None, # relation to dependency requires one to many relationship
+                #relation=relation,                
+                #head = None,
+                #relation_to_head = None, # relation to dependency requires one to many relationship
                 token_order=token_order,
                 speaker=speaker,
                 utterance=utterance, # what can we do here
@@ -388,32 +390,28 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             this_utterance_token_store.append(token_record)
 
 
-        # # iteratively update these
+        # # collect all grammatical dependency relations
         # for i in range(len(tokens)):
         #     if this_utterance_token_store[i].relation:
         #         index, head, label = this_utterance_token_store[i].relation.split('|')
         #         this_utterance_token_store[i].head = this_utterance_token_store[int(head)-1]
         #         this_utterance_token_store[i].relation_to_head = label
 
-        
         all_utterance_token_store.append(this_utterance_token_store)
 
         # the following are built by iterating through each utterance
         utterance.gloss = ' '.join(utt_gloss)
         utterance.stem = ' '.join(utt_stem)
-        utterance.relation = ' '.join(utt_relation)
+        #utterance.relation = ' '.join(utt_relation)
         utterance.part_of_speech = ' '.join(utt_pos)
         utterance.num_morphemes = utt_num_morphemes
         utterance.num_tokens = len(utt_gloss)                
-        utterance.save()
+        with transaction.atomic():
+            utterance.save()
 
     token_store = flatten_list(all_utterance_token_store)
 
-    
-    t1 = time.time()        
-    Token.objects.bulk_create(token_store, batch_size=1000)
-    print("("+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
-
+    bulk_write(token_store, transcript, Token)
 
     TranscriptBySpeaker_store = []
     TokenFrequency_store = []
@@ -472,18 +470,14 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
             TokenFrequency_store.append(tf)
 
     t2 = time.time()
-    #bulk_write(TranscriptBySpeaker_store, 'TranscriptBySpeaker', transcript.corpus.name, batch_size=1000)
-    #bulk_write(TokenFrequency_store, 'TokenFrequency', transcript.corpus.name, batch_size=1000)    
-    #test3
-    TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
-    TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
+    with transaction.atomic():
+        TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
+    with transaction.atomic():
+        TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
     print("("+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
 
     return('success')
     
-
-
-
 def extract_target_child(participants):
     nltk_target_child = None
     code_to_pop = None
@@ -534,11 +528,10 @@ def update_age(participant, age):
             participant.max_age = age
 
 
-def get_or_create_participant(corpus, attr_map, target_child=None):
-    
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+def get_or_create_participant(corpus, attr_map, Participant, target_child=None):
 
     if not attr_map:
+        print('attr_map is None in get_or_create_participant')
         return None
 
     age = parse_age(attr_map.get('age'))
@@ -553,39 +546,41 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
     custom = attr_map.get('custom')
 
     # this is searching for the set of participants -- this disallows regenerating it
-    query_set = Participant.objects.filter(code=code, name=name, role=role, corpus=corpus)
+    with transaction.atomic():
+        query_set = Participant.objects.select_for_update().filter(code=code, name=name, role=role, corpus=corpus)
+        # this code should lock the participant to help avoid deadlocks
 
-    # Filter participant candidates by target child
-    if target_child:
-        query_set = query_set.filter(target_child=target_child)
-
-    participant = query_set.first()
-
-    if not participant:
-        participant = Participant.objects.create(
-            code=code,
-            name=name,
-            role=role,
-            language=language,
-            group=group,
-            sex=sex,
-            ses=ses,
-            education=education,
-            custom=custom,
-            corpus=corpus,
-            corpus_name=corpus.name,
-            collection=corpus.collection,
-            collection_name=corpus.collection.name
-        )
+        # Filter participant candidates by target child
         if target_child:
-            participant.target_child = target_child
+            query_set = query_set.filter(target_child=target_child)
 
-    update_age(participant, age)
+        participant = query_set.first()
+        
+        if not participant:
+            participant = Participant.objects.create(
+                code=code,
+                name=name,
+                role=role,
+                language=language,
+                group=group,
+                sex=sex,
+                ses=ses,
+                education=education,
+                custom=custom,
+                corpus=corpus,
+                corpus_name=corpus.name,
+                collection=corpus.collection,
+                collection_name=corpus.collection.name
+            )
+            if target_child:
+                participant.target_child = target_child
 
-    # TODO very confusing. in memory attribute gets passed to child process
-    # Mark the age for this participant for this transcript, to be saved in utterance / token as speaker_age
-    participant.age = age
+        update_age(participant, age)
 
-    participant.save()
+        # TODO very confusing. in memory attribute gets passed to child process
+        # Mark the age for this participant for this transcript, to be saved in utterance / token as speaker_age
+        participant.age = age
+
+        participant.save()
 
     return participant
