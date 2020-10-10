@@ -9,6 +9,7 @@ The following instructions should work to generate a new release of `childes-db`
 - Confirm that you have 60+ gb free (newly downloaded material will be around 15 GB and new database will be 40 GB)
 - Clone this repo and `cd` into it
 - Make a virtual environment in, source it, and install requirements
+- Set your MySQL root password as an environment variable `$ROOT_PASS` in `~/.profile` and source it. Check with `echo $ROOT_PASS`
 ```
 virtualenv -p python3 childes-db-py3
 source childes-db-py3/bin/activate
