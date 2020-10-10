@@ -10,7 +10,7 @@ import numpy as np
 
 # download and unzip the directory structure that can be used as the input for the populate_db management command
 
-# example invocation: python3 download_corpora.py --versions_root /shared_hd2/childes-db-xml --version 2020.1 
+# example invocation: python3 download_corpora.py --versions_root /shared_hd2/childes-db --version 2020.1 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--versions_root", help='root to place all updates')
@@ -31,9 +31,11 @@ for dir_path in paths.values():
 paths['wget_log'] = os.path.join(paths['logs'],'wget.log')
 
 
-base_urls = ["https://childes.talkbank.org/data-xml/", "https://phonbank.talkbank.org/data-xml/"]
+xml_base_urls = ["https://childes.talkbank.org/data-xml/", "https://phonbank.talkbank.org/data-xml/"]
+cha_base_urls = ["https://childes.talkbank.org/data/", "https://phonbank.talkbank.org/data/"]
 
-for base_url in base_urls:
+
+for base_url in cha_base_urls + xml_base_urls:	
 
 	print('Downloading zip files with xml transcripts from '+base_url+'...')
 	wget_command = "wget -N -r -np -A.zip -o "+paths['wget_log']+" -e robots=off " + base_url	
@@ -73,16 +75,4 @@ for dir_with_zipfiles in dirs_with_zipfiles:
 	os.system(unzip_command)
 
 print('Complete!')
-
-# merge these two together? or just process in this directory structure
-
-#new_data_dir = os.path.join(paths['candidate'], 'childes.talkbank.org/data-xml')
-
-#print('After migrating (`python manage.py makemigrations`; `python manage.py migrate`), you are ready to run `python migrate.py populate_db` from djangoapp, after updating DATA_XML_PATH in config.JSON to point to '+new_data_dir)	
-	
-	
-	
-
-
-
 	

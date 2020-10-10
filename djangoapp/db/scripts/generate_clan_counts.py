@@ -10,7 +10,7 @@ CHA_DIR = '/shared_hd1/childes-db-cha/'
 PATTERN = 'Total number of different item types used\n(.*)Total number of items'
 SPEAKER_PATTERN = 'Speaker:(.*):'
 CLAN_CMD = "~/utils/unix-clan/unix/bin/freq "
-BY_SPEAKER = True
+BY_SPEAKER = False
 
 multiprocessing.log_to_stderr()
 logger = multiprocessing.get_logger()
@@ -38,18 +38,18 @@ def write_to_file(corpus_results):
 
     if BY_SPEAKER:
         filename = 'clan_counts_by_speaker.json'
-        for corpus_dir, result_arr in corpus_results.iteritems():
+        for corpus_dir, result_arr in corpus_results.items():
             speaker_dict_arr = [r.get() for r in result_arr]
             for speaker_dict in speaker_dict_arr:
-                for speaker, speaker_count in speaker_dict.iteritems():
+                for speaker, speaker_count in speaker_dict.items():
                     key = corpus_dir + '_' + speaker
                     clan_counts[key] = clan_counts.get(key, 0) + speaker_count
     else:
         filename = 'clan_counts.json'
-        for corpus_dir, result_arr in corpus_results.iteritems():
+        for corpus_dir, result_arr in corpus_results.items():
             clan_counts[corpus_dir] = sum([r.get() for r in result_arr])
 
-    print clan_counts
+    print(clan_counts)
     with open(filename, 'w') as outfile:
         json.dump(clan_counts, outfile)
 

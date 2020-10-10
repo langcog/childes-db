@@ -7,7 +7,6 @@ import traceback
 #from joblib import Parallel, delayed
 import multiprocessing
 import glob
-import time
 
 from django import db
 from django.db.models import Avg, Count, Sum
@@ -27,8 +26,6 @@ import random
 
 import django.db.backends.utils
 from django.db import OperationalError
-import time
-
 original = django.db.backends.utils.CursorWrapper.execute
 
 #monkey-patch execute_wrapper to try repeatedly to write after a deadlock has cleared
@@ -164,7 +161,13 @@ def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus):
     django.db.connections.close_all() # make sure that there are no connnections to re-use
     # Models need to be imported again because they are un-pickleable    
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
-        
+
+    metadata = nltk_corpus.corpus(fileid)[0]
+    pid = metadata.get('PID')    
+    if Transcript.filter(pid=pid):
+        # PID already processed in another file
+        return None
+
     # Create transcript and participant objects up front
     transcript, participants, target_child = create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection, Transcript, Participant)
     

@@ -21,7 +21,7 @@ def test_generator(a, b):
 with open(os.path.join(settings.BASE_DIR, JSON_FILENAME)) as clan_counts_file:
     clan_counts = json.load(clan_counts_file)
 
-for corpus_name, clan_count in clan_counts.iteritems():
+for corpus_name, clan_count in clan_counts.items():
     print corpus_name
     if BY_SPEAKER:
         corpus_name, speaker_code = corpus_name.split('_')
