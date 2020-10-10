@@ -113,6 +113,8 @@ def process_collection(collection_root, collection_name, data_source, pool, para
         
 def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool, parallelize):
 
+    from db.models import Collection, Corpus    
+
     collection = Collection.objects.get(name = collection_name, data_source = data_source)
 
     print('Processing corpus '+corpus_name+' at '+corpus_root)
