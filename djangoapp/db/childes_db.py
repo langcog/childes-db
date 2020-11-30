@@ -28,7 +28,7 @@ import django.db.backends.utils
 from django.db import OperationalError
 original = django.db.backends.utils.CursorWrapper.execute
 
-#monkey-patch execute_wrapper to try repeatedly to write after a deadlock has cleared
+#monkey-patch execute_wrapper to try repeatedly until a deadlock has cleared
 def execute_wrapper(*args, **kwargs):
     attempts = 0
     attempt_limit = 50
@@ -42,7 +42,7 @@ def execute_wrapper(*args, **kwargs):
                 print('!!!! Deadlock retries exhausted !!!!!')
                 raise e
             attempts += 1
-            time.sleep(1.0)
+            time.sleep(attempts*.5) #linear backoff
 
 django.db.backends.utils.CursorWrapper.execute = execute_wrapper
 
@@ -57,6 +57,8 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
     results = []
 
     if parallelize:
+        manager = multiprocessing.Manager()
+        pid_dict = manager.dict()
         pool = multiprocessing.Pool()
     else:
         pool = None
@@ -64,7 +66,7 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
     for collection_name in next(os.walk(collection_root))[1]:       
         if selected_collection and collection_name != selected_collection:
             continue # skip it if it isn't the selected collection        
-        results.append(process_collection(collection_root, collection_name, data_source, pool, parallelize))
+        results.append(process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize))
 
     if parallelize:
         pool.close()
@@ -86,7 +88,7 @@ def list_directory(directory, type):
     if type == 'files':
         return(os.walk(directory).__next__()[2])
 
-def process_collection(collection_root, collection_name, data_source, pool, parallelize):
+def process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize):
     
     from db.models import Collection
 
@@ -105,13 +107,13 @@ def process_collection(collection_root, collection_name, data_source, pool, para
 
     results = []
     for corpus_path in corpora_to_process:
-        results.append(process_corpus(corpus_path, os.path.basename(os.path.normpath(corpus_path)), collection_name, data_source, pool, parallelize))
+        results.append(process_corpus(corpus_path, os.path.basename(os.path.normpath(corpus_path)), collection_name, data_source, pool, pid_dict, parallelize))
 
     print('Finished collection '+collection_name +' in '+str(round(time.time() - t0, 3))+' seconds')
     return(flatten_list(results))
 
         
-def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool, parallelize):
+def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool, pid_dict, parallelize):
 
     from db.models import Collection, Corpus    
 
@@ -146,10 +148,10 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
         for fileid in nltk_corpus.fileids(): # Iterate over all transcripts in this corpus               
 
             if parallelize:
-                processed_file_results.append(pool.apply_async(process_file, args = (fileid, dir_with_xml, corpus, collection, nltk_corpus)))
+                processed_file_results.append(pool.apply_async(process_file, args = (fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict)))
 
             else: 
-                processed_file_results.append(process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus))
+                processed_file_results.append(process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, None))
 
         print('('+corpus_name+') Finished directory '+dir_with_xml)    
     
@@ -157,7 +159,7 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
     print('Finished corpus!')   
 
 
-def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus):
+def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict):
 
     import django
     django.db.connections.close_all() # make sure that there are no connnections to re-use
@@ -165,10 +167,22 @@ def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus):
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
 
     metadata = nltk_corpus.corpus(fileid)[0]
+    
     pid = metadata.get('PID')    
-    if Transcript.filter(pid=pid):
-        # PID already processed in another file
-        return None
+    
+    if pid_dict is not None:
+        # operating in a  parallel context
+        if pid in pid_dict:
+            print('File alreadt processed')
+            return None
+        else:
+            pid_dict[pid] = True 
+
+    else:
+        # opearting in a serial context
+        if Transcript.objects.filter(pid=pid):
+            # PID already processed in another file
+            return None
 
     # Create transcript and participant objects up front
     transcript, participants, target_child = create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection, Transcript, Participant)
