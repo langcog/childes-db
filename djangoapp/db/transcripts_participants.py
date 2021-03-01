@@ -4,11 +4,10 @@ from db.lexical_diversity import mtld, hdd
 
 import os
 
-def get_or_create_participant(corpus, attr_map, target_child=None):
-    
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker    
+def get_or_create_participant(corpus, attr_map, Participant, target_child=None):
 
     if not attr_map:
+        print('attr_map is None in get_or_create_participant')
         return None
 
     age = parse_age(attr_map.get('age'))
@@ -18,65 +17,55 @@ def get_or_create_participant(corpus, attr_map, target_child=None):
     language = attr_map.get('language')
     group = attr_map.get('group')
     sex = attr_map.get('sex')
-    # if sex is None:
-    #     if code == 'CHI' and age is not None:            
-    #         print('~~~~~~~~~~ "SEX IS NONE in ATTR MAP" ~~~~~~~~~~~~~~~~~~')    
     ses = attr_map.get('SES')
     education = attr_map.get('education')
     custom = attr_map.get('custom')
 
     # this is searching for the set of participants -- this disallows regenerating it
-    query_set = Participant.objects.filter(code=code, name=name, role=role, corpus=corpus)
+    with transaction.atomic():
+        query_set = Participant.objects.select_for_update().filter(code=code, name=name, role=role, corpus=corpus)
+        # this code should lock the participant to help avoid deadlocks
 
-    # Filter participant candidates by target child
-    if target_child:
-        query_set = query_set.filter(target_child=target_child)
-
-    participant = query_set.first()
-
-    if not participant:        
-        participant = Participant.objects.create(
-            code=code,
-            name=name,
-            role=role,
-            language=language,
-            group=group,
-            sex=sex,
-            ses=ses,
-            education=education,
-            custom=custom,
-            corpus=corpus,
-            corpus_name=corpus.name,
-            collection=corpus.collection,
-            collection_name=corpus.collection.name
-        )
+        # Filter participant candidates by target child
         if target_child:
-            participant.target_child = target_child
-           
+            query_set = query_set.filter(target_child=target_child)
 
-    update_age(participant, age)
+        participant = query_set.first()
+        
+        if not participant:
+            participant = Participant.objects.create(
+                code=code,
+                name=name,
+                role=role,
+                language=language,
+                group=group,
+                sex=sex,
+                ses=ses,
+                education=education,
+                custom=custom,
+                corpus=corpus,
+                corpus_name=corpus.name,
+                collection=corpus.collection,
+                collection_name=corpus.collection.name
+            )
+            if target_child:
+                participant.target_child = target_child
 
-    # TODO very confusing. in memory attribute gets passed to child process
-    # Mark the age for this participant for this transcript, to be saved in utterance / token as speaker_age
-    participant.age = age
+        update_age(participant, age)
 
-    participant.save()
+        # TODO very confusing. in memory attribute gets passed to child process
+        # Mark the age for this participant for this transcript, to be saved in utterance / token as speaker_age
+        participant.age = age
+
+        participant.save()
 
     return participant
 
-def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection):
-    
-    from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus, collection, Transcript, Participant):
 
     # Create transcript object
     metadata = nltk_corpus.corpus(fileid)[0]
-
-    # Return immediately if transcript has already been parsed
-    pid = metadata.get('PID')
-    if Transcript.objects.filter(pid=pid).exists():
-        return None, None, None
-
-    # check the whether os.path.join(corpus, fileId) is what we expect
+    pid = metadata.get('PID')    
 
     path_components = os.path.normpath(os.path.join(dir_with_xml, fileid)).split(os.sep)
     short_path = '/'.join(path_components[path_components.index(corpus.name)-1::])
@@ -101,21 +90,10 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
     target_child = None
     nltk_target_child, nltk_participants = extract_target_child(nltk_participants)
 
-    # print('~~~~~~~~~~ "Target Child Properties from NLTK Extraction" ~~~~~~~~~~~~~~~~~~')
-    # print('File ID')
-    # print(fileid)
-    # print('Name:')
-    # print(nltk_target_child['name'])
-    # print('Sex:')
-    # print(nltk_target_child['sex'])
-    # print('Age:')
-    # print(nltk_target_child['age'])
-
     # Save target child object
     if nltk_target_child:
         # Get or create django participant object for target child
-
-        target_child = get_or_create_participant(corpus, nltk_target_child)
+        target_child = get_or_create_participant(corpus, nltk_target_child, Participant)
 
         # This participant is its own target child
         target_child.target_child = target_child
@@ -123,40 +101,7 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
         # Mark in transcript as well
         transcript.target_child = target_child
         transcript.target_child_name = target_child.name
-        transcript.target_child_age = target_child.age        
-        #if target_child.sex is None:
-        fid = 'File ID: '+str(fileid)+ ';'        
-        
-        
-        if len(nltk_target_child['name']) > 0:
-            print(fid + ' (nltk_target_child) ' + 'Name: '+nltk_target_child['name'])            
-        else:
-            print(fid + ' (nltk_target_child) ' + 'Name: undefined')
-
-        if len(nltk_target_child['sex']) > 0:
-            print(fid + ' (nltk_target_child) ' + 'Sex: '+nltk_target_child['sex'])            
-        else:
-            print(fid + ' (nltk_target_child) ' + 'Sex: undefined')
-        
-        if len(nltk_target_child['age']) > 0:
-            print(fid + ' (nltk_target_child) ' + 'Age: '+nltk_target_child['age'])            
-        else:
-            print(fid + ' (nltk_target_child) ' + 'Age: undefined')        
-
-
-        if target_child.name:
-            print(fid + ' (target_child) ' + 'Name: ' + target_child.name)            
-        else:
-            print(fid + ' (target_child) ' + 'Name: undefined')            
-        if target_child.sex:
-            print(fid + ' (target_child) ' + 'Sex: ' + target_child.sex)
-        else:
-            print(fid + ' (target_child) ' + 'Sex: undefined')
-        if target_child.age:
-            print(fid + ' (target_child) ' +'Age: ' + str(target_child.age))
-        else:
-            print(fid + ' (target_child) ' +'Age: undefined')
-        
+        transcript.target_child_age = target_child.age
         transcript.target_child_sex = target_child.sex
 
         target_child.save()
@@ -166,12 +111,12 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
 
     # Save all other participants
     for nltk_participant in nltk_participants.values():
-        participant = get_or_create_participant(corpus, nltk_participant, target_child)
+        participant = get_or_create_participant(corpus, nltk_participant, Participant, target_child) 
         result_participants.append(participant)
 
     result_participants = [x for x in result_participants if x is not None]
 
-    return transcript, result_participants, target_child
+    return transcript, result_participants, target_child    
 
 def process_transcript_by_speaker(participant, transcript, target_child, speaker_utterances, speaker_tokens):
 

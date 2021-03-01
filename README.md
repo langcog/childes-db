@@ -1,156 +1,122 @@
 # childes-db
+The childes-db project aims to make CHILDES transcripts more accessible by reducing the amount of preprocessing (e.g., CLAN or specific preprocessing libraries) and by making the individual tokens, utterances, transcripts, and corpora available in a tidy, tabular format that is accessible across programming languages. We release new versions of this dataset periodically to facilitate reproducibility. We also provide an R package (childesr) and a Python package (childespy) which allow users to access this database without having to write complex SQL queries.
 
-The CHILDES-db project aims to make [CHILDES](http://childes.talkbank.org/) transcripts more accessible by reducing the amount of preprocessing necessary (e.g., CLAN or specific preprocessing libraries) and by making the individual tokens and utterances available in a tabular format. In addition, we plan to release new dated versions periodically to facilitate replication (the public version of CHILDES currently does not have a versioning system); we are also working on an API (R and/or Pandas) to provide abstractions such that users do not need to write SQL to perform common tasks.
+# Preparing a New Release
 
-# Local Installation
+The following instructions should work to generate a new release of `childes-db` on an Ubuntu 16 - 20 machine
 
-A recent version of this database is available for download at http://childes-db.stanford.edu/docs.html. Installation requires a running MySQL database. To add the database, authorize as a database user with sufficient permissions to create a new database:
+### Preliminaries
+- Confirm that you have 60+ gb free (newly downloaded material will be around 15 GB and new database will be 40 GB)
+- Clone this repo and `cd` into it
+- Make a virtual environment in, source it, and install requirements
+- Set your MySQL root password as an environment variable `$ROOT_PASS` in `~/.profile` and source it. Check with `echo $ROOT_PASS`
+```
+virtualenv -p python3 childes-db-py3
+source childes-db-py3/bin/activate
+pip install -r requirements.txt
+```
+- Choose a new version name
 
-`mysql -u <username> -p` 
+### Download Corpora
 
-And provide the corresponding password. Once authorized, create a new database with:
+Download corpora from the CHIILDES and PhonBank sites, both XML and CHAT files with the following Python script:
 
-`CREATE DATABASE childes-db-version-0.1.0`  
-
-Exit mysql with `\q` and unzip the sql dump file (childes-db-version-0.1.0.sql.gz). The unzipped SQL dump can then be imported to the local database with:
-
-`mysql -u <username> -p childes-db-version-0.1.0 < childes-db-version-0.1.0.sql`  
-
-Remember to change the version number if necessary. GUI tools like SequelPro may also be used for many of the tasks above.
-
-# Tables
-Tables are split into primary tables, containing representations of the transcripts, and derived tables that contain cached values (for the `rchildes` API).  
-
-### Primary Tables
-- `token`: atomic construct, corresponding to a word. 
-- `utterance`: refers to one or more token records. 
-- `dependent_tier`: contains metadata associated with an utterance (to be implemented). 
-- `transcript`: refers to one or more utterances. 
-- `participant`: a person, usually corresponding to a labeled tier (MOT, CHI, etc.) 
-- `corpus`: a collection of transcripts, generally corresponding to a specific research project. 
-- `collection`: a collection of corpora, generally corresponding to a specific language
-
-### Derived Tables
-- `django_content_type`: used for Django configuration
-- `django_migrations`: used for Django configuration
-- `transcript_by_speaker`: type and token counts, MLU estimates for each participant in each transcript
-- `token_frequency`: cached counts per type per child in transcript
-
-### Token
-`id`: unique identifier  
-`gloss`: natural language transcription   
-`replacement`: replacement annotation, if the gloss contains a nonstandard form  
-`stem`: morphological form from CHILDES  
-`part_of_speech`: part of speech  
-`relation`: dependency information, from GRA or XGRA tier  
-`speaker_id`: numeric identifier corresponding to participant.id  
-`utterance_id`: numeric identifier correponding to utterance.id  
-`token_order`: integer index of token within utterance  
-`corpus_id`: numeric identifier corresponding to corpus.id  
-`transcript_id`: numeric identifier correponding to transcript.id  
-`speaker_age`: child age in days  
-`speaker_code`: code on the CHILDES tier, e.g. MOT, FAT, INV, or CHI  
-`speaker_name`: natural language designation for speaker  
-`speaker_role`: speaker role as identified by the metadata  
-`speaker_sex`: gender of participant  
-`target_child_id`: numeric identifier corresponding to participant.id of target child  
-`target_child_age`: age of the child at time of utterance  
-`target_child_name`: name of the target child in the correpsonding transcript  
-`target_child_sex`: gender of target child in the corresponding transcript  
-
-### Utterance
-`id`: unique identifier  
-`speaker_id`: numeric identifier corresponding to participant.id  
-`order`:  integer index of utterance within transcript  
-`transcript_id`: numeric identifier correponding to transcript.id  
-`corpus_id`: numeric identifier corresponding to corpus.id  
-`gloss`: natural language transcription of the sentence  
-`length`: number of word tokens in the utterance  
-`relation`: dependency information for the utterance, from GRA or XGRA tier  
-`stem`: concatenated stemmed representation (from the MOR tier) for the utterance  
-`part_of_speech`: concatenated part of speech information for the utterance  
-`speaker_code`: code on the CHILDES tier, e.g. MOT, FAT, INV, or CHI  
-`speaker_name`: natural language designation for speaker  
-`speaker_role`: speaker role as identified by the metadata  
-`speaker_sex`: gender of participant  
-`target_child_id`: numeric identifier corresponding to participant.id of target child  
-`target_child_age`: age of the child at time of utterance   
-`target_child_name`: name of the target child in the correpsonding transcript  
-`target_child_sex`: gender of target child in the corresponding transcript  
-
-### Dependent_tier
-This table has not yet been implemented. `Dependent_tier` will contain an utterance-level annotation, e.g., a %PHO annotation with a specific `utterance_id`. 
-
-### Transcript
-`id`: unique identifier  
-`languages`: included languages in the transcript  
-`date`: Year, month and day of initial data collection  
-`filename`: path in the corresponding CHILDES directory structure (paths like this may change with new releases)  
-`corpus_id`: numeric identifier corresponding to corpus.id  
-`target_child_id`: numeric identifier corresponding to participant.id of target child  
-`target_child_age`: age of the child at time of utterance  
-`target_child_name`: name of the target child in the correpsonding transcript  
-
-### Participant
-`id`: unique identifier  
-`code`: code on the CHILDES tier, e.g. MOT, FAT, INV, or CHI  
-`speaker_name`: natural language designation for speaker  
-`speaker_role`: speaker role as identified by the metadata  
-`language`: language associated with speaker  
-`group`: group associated with speaker per transcript-level metadata  
-`sex`: gender of a speaker per transcript-level metadata  
-`education`: level of education of the speaker per transcript-level metadata  
-`custom`: the custom field in  transcript-level metadata  
-`corpus_id`: numeric identifier corresponding to corpus.id  
-`max_age`: latest age in days for a transcript in the corpus; defined only for children   
-`min_age`: earliest age in days for a transcript in the corpus; defined only for children  
-`target_child_id`: participant.id of the target child, if unique across transcripts  
-
-### Corpus
-`id`: unique identifier  
-`name`: corpus name  
-`collection_id`: numeric identifier corresponding to collection.id  
-
-### Collection
-`id`: unique identifier  
-`name`: collection name  
-
-# Example Queries
-
-get all tokens spoken by children between ages 400 and 600 days
-
-`select t.gloss, t.speaker_age, p.name, p.corpus_id, p.code
-from token t inner join participant p on t.speaker_id = p.id
-where t.speaker_age between 400 and 600 and p.code = 'CHI'`
+`python3 download_corpora.py --versions_root /shared_hd2/childes-db --version <version name, e.g. 2020.2>`
 
 
-get all children under the age of 600 days and the number of times they said “eat” 
+### MySQL Preparations
 
-`select t.speaker_name, count(t.gloss), t.corpus_id
-from token t inner join participant p on t.speaker_id = p.id
-where t.stem like 'eat%'
-and t.speaker_age < 600
-and t.speaker_role = 'Target_Child'
-group by t.speaker_id`
+The following are necessary only if installing MySQL new 
+
+Edit the mysqld.cnf file to make MySQL accessible externally and so that it can handle large queries and long import times better
+`sudo vim /etc/mysql/mysql.conf.d/mysqld.cnf`
+
+- change bind address to 0.0.0.0 to allow access from outside the host
+`bind-address = 0.0.0.0`
+
+- Increase the max_allowed_packed size
+`max_allowed_packet      = 256M`
+
+- Increase the default timeout
+`wait_timeout=6000`
+
+- Restart MySQL for changes to take effect
+
+`sudo service mysql restart`
+
+- On a production machine, ensure that there is a read-only user with the standard childes-db credentials
+
+```
+mysql -u<mysql username> -p<mysql password>
+# should start MySQL prompt
+create user 'childesdb'@'%' IDENTIFIED BY '<childes db default password>'
+\q
+```
+
+### Machine Preparations
+
+- On the production machine, make sure port 3306 is reachable through the security group (EC2) or other firewall
+
+### Prepare the Schema 
+
+Update the `config.json` file to point to the name of the database you want to populate. This is necessary in addition to 
+
+`python3 manage.py makemigrations db`
 
 
-get all utterances longer than 20 words for a particular child
+### Initialize Schema and Populate
 
-`select u.speaker_name, u.gloss, u.length, u.transcript_id
-from utterance u 
-where u.length > 20
-and u.corpus_id = 23
-and u.speaker_name = 'Alex'`
+`./new_2020.sh`
 
+This makes  a new database, runs migrate to to initialize the schema, and runs the `populate_db` command. As of the 2020 release, this calls the `populate_db` command twice internally: once to add datasets from CHILDES, and once to add datasets from Phonbank
 
-get all tokens from children with min_age < 2 years
-`select *
-from token t inner join participant p on t.speaker_id = p.id
-where (p.role = 'Target_Child' or p.code = 'CHI')
-and p.min_age < 730`
+### Testing
 
-get all utterances from mothers and their children (with age of child for each utterance)
+To compute the correlation between the Transcript-Speaker counts as computed with childes-db vs. that computed with CLAN:
 
-`select u.id as utterance_id, u.speaker_id, u.speaker_code, u.speaker_role, u.speaker_name, u.length, tr.target_child_id, tr.target_child_age from utterance u inner join transcript tr on u.transcript_id = tr.id
-where u.speaker_role in (‘Target_Child’, ‘Mother’)`
+`python3 manage.py test_frequency`
 
+If this number is less than .997, check why.
+
+### Deployment to EC2
+
+To copy from the staging server, e.g., Chompsky, to the production server, e.g., EC2, copy databases to the production server with the following command
+
+`ssh -p <ssh port on Chompsky> <user>@<chompsky_host> 'mysqldump -u <chompsky_username> -p<chompsky password>  --databases <database version> | gzip -c' | gunzip -c | mysql -u <EC2 MySQL uersname> -p<EC2 MySQL password>`
+
+### Give Read-Only User Read Permissions
+
+```
+mysql -u<mysql username> -p<mysql password>
+# should start MySQL prompt
+GRANT SELECT ON `2020.1`.* TO '<mysql read-only user>'@'%' IDENTIFIED BY '<mysql  password>'
+GRANT SELECT ON `2019.1`.* TO '<mysql read-only user>'@'%' IDENTIFIED BY '<mysql  password>'
+GRANT SELECT ON `2018.1`.* TO '<mysql read-only user>'@'%' IDENTIFIED BY '<mysql  password>'
+```
+
+### Make unversioned childesdb database refer to most recent release
+
+```
+mysql -u<mysql username> -p<mysql password>
+# should start MySQL prompt
+create view admin as select * from `2020.1`.`admin`;
+create view collection as select * from `2020.1`.`collection`;
+create view corpus as select * from childesdb.`corpus`;
+create view django_content_type as select * from `2018.1`.`django_content_type`;
+create view django_migrations as select * from `2018.1`.`django_migrations`;
+create view participant as select * from `2020.1`.`participant`;
+create view token as select * from `2020.1`.`token`;
+create view `token_frequency` as select * from `2018.1`.`token_frequency`;
+create view transcript as select * from `2020.1`.`transcript`;
+create view transcript_by_speaker as select * from `2018.1`.`transcript_by_speaker`;
+create view utterance as select * from `2020.1`.`utterance`
+\q
+```
+
+Give permissions to the the reader to read from the alias
+```
+mysql -u<mysql username> -p<mysql password>
+# should start MySQL prompt
+GRANT SELECT ON `childesdb`.* TO '<mysql read-only user>'@'%' IDENTIFIED BY '<mysql  password>'
+GRANT SHOW VIEW ON `childesdb`.* TO '<mysql user>'@'%' IDENTIFIED BY '<mysql  password>'
+```

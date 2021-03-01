@@ -25,8 +25,6 @@ DB_USER = config['mysql']['DB_USER']
 DB_PASSWORD = config['mysql']['DB_PASSWORD']
 DB_PORT = config['mysql']['DB_PORT']
 
-DATA_XML_PATH = config['data']['DATA_XML_PATH']
-
 # S3_BUCKET_NAME = config['AWS']['S3_BUCKET_NAME']
 # EC2_AMI_ID = config['AWS']['EC2_AMI_ID']
 # EC2_INSTANCE_TYPE = config['AWS']['EC2_INSTANCE_TYPE']

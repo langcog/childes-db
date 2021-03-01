@@ -1,12 +1,3 @@
-
-
-
-
-# iterate over /shared_hd0/corpora/childes_new
-# run freq
-# using name of transcript, fetch numbers from transcript by speaker table
-# calculate percentage or something
-
 import os
 import numpy
 import traceback
@@ -17,14 +8,23 @@ import re
 from django.conf import settings
 from django.core.management import BaseCommand
 from db.models import Transcript, TranscriptBySpeaker
+import fnmatch
+from pathlib import Path
 
-CHA_DIR = '/home/alsan/all_cha/childes.talkbank.org/data/'
+
+COLLECTION_ROOTS = ['/shared_hd2/childes-db/2020.1/candidate/phonbank.talkbank.org/data', '/shared_hd2/childes-db/2020.1/candidate/childes.talkbank.org/data']
 PATTERN = 'Total number of different item types used\n(.*)Total number of items'
 SPEAKER_PATTERN = 'Speaker:(.*):'
+CLAN_CMD = "~/utils/unix-clan/unix/bin/freq "
+PARALLEL= True
 
+# iterate over /shared_hd0/corpora/childes_new
+# run freq
+# using name of transcript, fetch numbers from transcript by speaker table
+# compute correlation between counts
 
 def clan_unigram_count_by_speaker(path):
-    output = os.popen('~/legacy/CLAN/unix-clan/unix/bin/freq ' + path + ' 2> /dev/null').read()
+    output = os.popen(CLAN_CMD + path + ' 2> /dev/null').read()
     speakers = re.findall(SPEAKER_PATTERN, output)
     counts = re.findall(PATTERN, output)
     assert len(speakers) == len(counts)
@@ -33,47 +33,66 @@ def clan_unigram_count_by_speaker(path):
         speaker_dict[elem.strip().replace('*', '')] = int(counts[i])
     return speaker_dict
 
-def get_counts(path, corpus_root):
-    filename = str(path).split(corpus_root)[1].replace("cha", "xml")
-    #print filename
-    tr = Transcript.objects.filter(filename=filename)
+def get_counts(path, corpus_root):    
+    
+
+    corpus_name =  corpus_root.split('/')[-1]
+    throwaway, path_in_db = path.split(corpus_name+'/')
+    path_in_db = os.path.join(corpus_name, path_in_db.replace(".cha",".xml"))
+     # corpus_name should return the segment of the path between /data/ and the location of the zip_placeholder, e.g. "Scandanabian/Norwegian"
+    
+    # if not 'Scandanavian' in path.split('/'):
+    #     return None, None, None
+    # corpus name and lower should be findable in the database with like %x%
+
+    #data_prefix = /shared_hd2/childes-db/2020.1/candidate/phonbank.talkbank.org/data/
+    #corpus_name ={Dutch, Scandanavian}
+    
+    tr = Transcript.objects.filter(filename__contains=path_in_db)
 
     if not tr:
-        return None, None
+        print('Transcript not found in database: '+path_in_db)
+        return None, None, None, path
+    if len(tr) > 1:
+        print('Multiple records found for corpus name '+path_in_db)
+        return None, None, None, path
 
-    m = clan_unigram_count_by_speaker(str(path))
+    m = clan_unigram_count_by_speaker(path)
 
-    l1, l2 = [], []
+    l1, l2, missing = [], [], []
 
-    for code, count in m.iteritems():
+    for code, count in m.items():
         row = TranscriptBySpeaker.objects.filter(transcript=tr, speaker__code=code)
         if row:
             l1.append(count)
             l2.append(row[0].num_tokens)
         else:
-            print "oops not found ", tr.id, code
-            return None, None
-    return l1,l2
+            print("Transcript + Code combination not found! ", path_in_db, code)
+            missing.append((path_in_db, code)) 
+            return None, None, missing, path
+    return(l1,l2, missing, path)
 
 
 def count_corpora(corpus_root):
-    total_collection_l1, total_collection_l2 = [], []
+    corpus_collection_l1, corpus_collection_l2, corpus_missing, corpus_filenames  = [], [], [], []
 
-    for corpus_dir in os.walk(corpus_root).next()[1]:
+    for subcorpus_dir in os.walk(corpus_root).__next__()[1]:
         #if corpus_dir != "Clark":
          #   continue
 
-        print "||| ", corpus_dir
+        print("||| ", subcorpus_dir)
         # corpus_results[corpus_dir] = []
-        path_list = Path(os.path.join(corpus_root, corpus_dir)).glob('**/*.cha')
-
-        for path in path_list:
-            l1, l2 = get_counts(path, corpus_root + "/")
+        path_list = Path(os.path.join(corpus_root, subcorpus_dir)).glob('**/*.cha')
+        
+        for path in set(path_list):
+            l1, l2, missing, filename = get_counts(str(path), corpus_root)
             if l1 and l2:
-                total_collection_l1.extend(l1)
-                total_collection_l2.extend(l2)
+                corpus_collection_l1.extend(l1)
+                corpus_collection_l2.extend(l2)
+                corpus_missing.extend(missing)
+                corpus_filenames.extend(filename)
 
-    return total_collection_l1, total_collection_l2
+    return corpus_collection_l1, corpus_collection_l2, corpus_missing, corpus_filenames
 
 #The class must be named Command, and subclass BaseCommand
 class Command(BaseCommand):
@@ -86,63 +105,55 @@ class Command(BaseCommand):
         logger = multiprocessing.get_logger()
         logger.setLevel(logging.INFO)
 
-        pool = multiprocessing.Pool()
+        if PARALLEL:
+            pool = multiprocessing.Pool()
+        
         corpus_results = {}
-
         results = []
-
         total_l1 = []
         total_l2 = []
+        filenames = []
+        
+        for collection_root in COLLECTION_ROOTS: #iterate over phonbank and CHILDES
+            for collection_name in next(os.walk(collection_root))[1]:       
+                
+                print("*** ", collection_name)
+                corpus_roots = []
+                
+                for root, dirnames, filenames in os.walk(os.path.join(collection_root, collection_name)):
+                    for filename in fnmatch.filter(filenames, '*.zip_placeholder'):
+                        corpus_roots.append(os.path.join(collection_root, collection_name, root, filename.replace('.zip_placeholder','')))
 
-        for collection_name in os.walk(CHA_DIR).next()[1]:
+                corpus_roots = list(set(corpus_roots))
+                print('Corpora to process: '+str(len(corpus_roots)))
 
-            # test?
-            print "*** ", collection_name
+                for corpus_root in corpus_roots:
+                    if PARALLEL:
+                        results.append(pool.apply_async(count_corpora, args=(corpus_root,)))
+                    else:
+                        results.append(count_corpora(corpus_root,))
 
-            corpus_root = os.path.join(CHA_DIR, collection_name)
-            print corpus_root
-
-            if os.walk(corpus_root).next()[2]:
-                # corpora in here (i.e. *.zip files present)
-                #results += crawl_corpora(corpus_root, collection, pool)
-
-                results.append(pool.apply_async(count_corpora, args=(corpus_root,)))
-
-                #t1, t2 = count_corpora(corpus_root) # add pool
-                #total_l1.extend(t1)
-                #total_l2.extend(t2)
-            else:
-                # go past subdirectories (i.e. Korea, Indonesian, etc.)
-                for dir in os.walk(corpus_root).next()[1]:
-                    #results += crawl_corpora(corpus_root + "/" + dir, collection, pool)
-                    # t1, t2 = count_corpora(corpus_root + "/" + dir)  # add pool
-                    # total_l1.extend(t1)
-                    # total_l2.extend(t2)
-
-                    results.append(pool.apply_async(count_corpora, args=(corpus_root + "/" + dir,)))
-
-        pool.close()
+        if PARALLEL:
+            pool.close()
 
         for result in results:
             try:
-                t1, t2 = result.get()
+                t1, t2, missing, filename = result.get()
                 total_l1.extend(t1)
                 total_l2.extend(t2) # would need a map for special subsetting
+                filenames.extend(filename)
             except:
                 traceback.print_exc()
+        
+        counts = numpy.asarray([total_l1, total_l2])
+        numpy.savetxt("freq.csv", counts.transpose(), delimiter=",", fmt='%.3e')
 
-        a = numpy.asarray([total_l1, total_l2])
-        numpy.savetxt("freq.csv", a.transpose(), delimiter=",", fmt='%.3e')
-
+        print('Number of transcripts in correlation:')
+        print(len(total_l1))
         coeff = numpy.corrcoef(total_l1, total_l2)[0, 1]
-        print coeff
-        os.system("echo %s > coeff.txt" % coeff)
+        print("Correlation coefficient (Pearson's r)")
+        print(coeff)
+        os.system("echo %s > word_frequency_correlation.txt" % coeff)
 
-
-
-
-                #corpus_results[corpus_dir].append(pool.apply_async(func, args=(str(path),)))
-
-        #pool.close()
-        #write_to_file(corpus_results)
-
+        import pdb
+        pdb.set_trace()

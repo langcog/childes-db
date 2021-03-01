@@ -2,13 +2,11 @@ from xml.dom import minidom
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
 import re
 
-"""
-def bulk_write(records_to_write, data_type, corpus_name, batch_size=1000):
-
-    bulk_write_start_time = time.time()    
-    getattr(db.models, data_type).objects.bulk_create(records_to_write, batch_size)
-    print('('+corpus_name+') Bulk write for '+data_type+' took '+str(round(time.time() - bulk_write_start_time, 3)))+'s'
-"""
+def bulk_write(token_store, transcript, Token):
+    t1 = time.time()        
+    with transaction.atomic():
+        Token.objects.bulk_create(token_store, batch_size=1000)
+    print("("+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
 def flatten_list(hierarchical_list, list_name = None):    
     # list_name is for debugging
@@ -56,22 +54,19 @@ def parse_age(age):
 def update_age(participant, age):
     if age:
         if not participant.min_age:
-            print('Setting min age!')
             participant.min_age = age
 
         if participant.min_age and age < participant.min_age:
-            print('Updating age!')
             participant.min_age = age
 
         if not participant.max_age:
-            print('Setting max age!')
             participant.max_age = age
 
         if participant.max_age and age > participant.max_age:
-            print('Updating age!')
             participant.max_age = age
 
 def prettify(ET, fname):
+    # Use for debugging, prettify XML when in PDB 
     xmlstr = minidom.parseString(ET.tostring(root)).toprettyxml(indent="   ")
     with open(fname, "w") as f:
         f.write(xmlstr)

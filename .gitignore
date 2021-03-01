@@ -1,6 +1,14 @@
+local/*
+pip-selfcheck.json
+config.R
+mysql_config.py
+childes-db-py3/*
 .ipynb_checkpoints
 .idea 
 config.py
 config.json
+.DS_Store
+._*
 *.pyc
+*.log
 djangoapp/.idea
