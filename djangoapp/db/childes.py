@@ -350,9 +350,6 @@ class CHILDESCorpusReader(XMLCorpusReader):
         suffixes = get_list_morphemes('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS), xmlword)
         suffix = " ".join(suffixes)
 
-        if xmlword.text == 'done':
-            pdb.set_trace()
-
         english_translation = get_single_morpheme('.//{%s}mor/{%s}menx' % (NS, NS), xmlword)
         clitic = get_single_morpheme('.//{%s}mor/{%s}mor-post' % (NS, NS), xmlword)
 

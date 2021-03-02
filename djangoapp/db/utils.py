@@ -1,6 +1,8 @@
 from xml.dom import minidom
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
 import re
+import time
+from django.db import transaction
 
 def bulk_write(token_store, transcript, Token):
     t1 = time.time()        

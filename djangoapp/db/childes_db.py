@@ -65,6 +65,7 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
         pool = multiprocessing.Pool()
     else:
         pool = None
+        pid_dict = {}
 
     for collection_name in next(os.walk(collection_root))[1]:       
         if selected_collection and collection_name != selected_collection:
@@ -163,7 +164,6 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
 
 
 def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict):
-
     import django
     django.db.connections.close_all() # make sure that there are no connnections to re-use
     # Models need to be imported again because they are un-pickleable    
@@ -176,7 +176,7 @@ def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict
     if pid_dict is not None:
         # operating in a  parallel context
         if pid in pid_dict:
-            print('File alreadt processed')
+            print('File already processed')
             return None
         else:
             pid_dict[pid] = True 
@@ -197,7 +197,6 @@ def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict
 
 
 def process_utterances(nltk_corpus, fileid, transcript, participants, target_child, Utterance, Token, TranscriptBySpeaker, TokenFrequency):
-    
     all_utterance_token_store = [] # utterance_store
     token_store = []
     sents = nltk_corpus.get_custom_sents(fileid)    
@@ -259,7 +258,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
                 language=transcript.language
             )
         
-        all_utterance_token_store = process_utterance_tokens(tokens, utterance, token_store, all_utterance_token_store, utterance_type, speaker, transcript, target_child)
+        all_utterance_token_store = process_utterance_tokens(tokens, utterance, token_store, all_utterance_token_store, utterance_type, speaker, transcript, target_child, Token)
         t1 = time.time()        
         Token.objects.bulk_create(token_store, batch_size=1000)
         print("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
@@ -334,7 +333,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
 
     return('success')
 
-def process_utterance_tokens(tokens, utterance, token_store, all_utterance_token_store, utterance_type, speaker, transcript, target_child)
+def process_utterance_tokens(tokens, utterance, token_store, all_utterance_token_store, utterance_type, speaker, transcript, target_child, Token):
     utt_gloss = []
     utt_stem = []
     utt_relation = []

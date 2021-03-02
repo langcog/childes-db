@@ -1,6 +1,7 @@
 from db.utils import parse_age, update_age, extract_target_child
 from django.db.models import Avg, Sum
 from db.lexical_diversity import mtld, hdd
+from django.db import transaction
 
 import os
 
