@@ -85,6 +85,22 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
     
     print('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
 
+def test_single_corpus(collection_root, selected_corpus, data_source, selected_collection):
+    
+    single_corpus_start_time = time.time()
+    results = []
+
+    pool = None
+    pid_dict = {}
+
+    results.append(process_collection(collection_root, selected_collection, data_source, pool, pid_dict, parallelize=False, selected_corpora = [selected_corpus]))
+
+    print('Results:') # this is where error messages should be caught    
+    flat_results = flatten_list(results)    
+    print(flat_results)
+ 
+    print('Finished processing single corpus in '+str(round((time.time() - single_corpus_start_time) / 60., 3))+' minutes')
+
 
 def list_directory(directory, type):
     if type == 'folders':
@@ -92,7 +108,7 @@ def list_directory(directory, type):
     if type == 'files':
         return(os.walk(directory).__next__()[2])
 
-def process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize):
+def process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize, selected_corpora = None):
     
     from db.models import Collection
 
@@ -107,6 +123,15 @@ def process_collection(collection_root, collection_name, data_source, pool, pid_
     for root, dirnames, filenames in os.walk(os.path.join(collection_root, collection_name)):
         for filename in fnmatch.filter(filenames, '*.zip_placeholder'):
             corpora_to_process.append(os.path.join(root, filename.replace('.zip_placeholder','')))    
+    
+    if selected_corpora is None:
+        pass
+    else:
+        # find any corpora that are in the selected corpus list
+        selected_corpus_index = np.argwhere([any([x in corpus_name for x in  selected_corpora]) for corpus_name in corpora_to_process])[0]
+        # select these from the set of corpora to process
+        corpora_to_process = np.array(corpora_to_process)[selected_corpus_index]        
+    
     print('Corpus contains '+str(len(corpora_to_process)) +' sub corpora')
 
     results = []
