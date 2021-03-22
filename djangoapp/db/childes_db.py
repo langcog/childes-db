@@ -109,11 +109,11 @@ def list_directory(directory, type):
         return(os.walk(directory).__next__()[2])
 
 def process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize, selected_corpora = None):
-    
     from db.models import Collection
 
     print('Processing collection '+collection_name+' at '+os.path.join(collection_root, collection_name))    
     t0 = time.time()
+
     collection = Collection.objects.create(name=collection_name, data_source = data_source)
 
     # presence of the zipfiles is what is used to determine what are top-level corpora
@@ -144,7 +144,7 @@ def process_collection(collection_root, collection_name, data_source, pool, pid_
         
 def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool, pid_dict, parallelize):
 
-    from db.models import Collection, Corpus    
+    from db.models import Collection, Corpus
 
     collection = Collection.objects.get(name = collection_name, data_source = data_source)
 

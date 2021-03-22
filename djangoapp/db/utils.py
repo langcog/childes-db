@@ -22,7 +22,6 @@ def flatten_list(hierarchical_list, list_name = None):
 def extract_target_child(participants):
     nltk_target_child = None
     code_to_pop = None
-
     for code, nltk_participant in participants.items():
         # TODO use code = CHI as well
         if nltk_participant.get('role') == 'Target_Child':

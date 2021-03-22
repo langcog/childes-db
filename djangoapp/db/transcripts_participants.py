@@ -70,7 +70,7 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
 
     path_components = os.path.normpath(os.path.join(dir_with_xml, fileid)).split(os.sep)
     short_path = '/'.join(path_components[path_components.index(corpus.name)-1::])
-
+    
     transcript = Transcript.objects.create(
         filename=short_path,
         corpus=corpus,
