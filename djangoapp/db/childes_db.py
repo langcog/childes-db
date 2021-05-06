@@ -66,7 +66,6 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
     else:
         pool = None
         pid_dict = {}
-
     for collection_name in next(os.walk(collection_root))[1]:       
         if selected_collection and collection_name != selected_collection:
             continue # skip it if it isn't the selected collection        
@@ -331,6 +330,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         TranscriptBySpeaker_store.append(tbs)
 
         gloss_counts = speaker_tokens.values('gloss').annotate(count=Count('gloss'))
+
         for gloss_count in gloss_counts:
             tf = TokenFrequency(
                 transcript=transcript,
@@ -450,7 +450,7 @@ def process_utterance_tokens(tokens, utterance, token_store, all_utterance_token
     #utterance.relation = ' '.join(utt_relation)
     utterance.part_of_speech = ' '.join(utt_pos)
     utterance.num_morphemes = utt_num_morphemes
-    utterance.num_tokens = len(utt_gloss)                
+    utterance.num_tokens = len(utt_gloss)
     with transaction.atomic():
         utterance.save()
     return all_utterance_token_store
