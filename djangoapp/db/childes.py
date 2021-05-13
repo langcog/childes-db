@@ -14,6 +14,7 @@ __docformat__ = 'epytext en'
 
 import re   
 from collections import defaultdict
+import logging
 import warnings
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
@@ -452,10 +453,10 @@ class CHILDESCorpusReader(XMLCorpusReader):
         # check if this file has phonological transcriptions        
         if xmldoc.find('.//{%s}pw' % NS) is not None:
             fileHasPhonology = True
-            print('File has phonological transcripts. Processing...')
+            logging.info('File ' + fileid + ' has phonological transcripts. Processing...')
         else:
             fileHasPhonology = False
-            print('File has no phonological transcripts. Skipping extraction of phonological information.')
+            logging.info('File ' + fileid + ' has no phonological transcripts. Skipping extraction of phonological information.')
 
         results2 = []
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
@@ -554,7 +555,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     word = xmlword.text
                     token['gloss'] = xmlword.text.strip()
                 else:
-                    print('empty word in sentence '+ str(sentID))
+                    logging.info('empty word in sentence '+ str(sentID))
                     word = ''
                     token['gloss'] = ''    
 
@@ -715,7 +716,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     if xmlword.text:
                         word = xmlword.text
                     else:
-                        print('empty word in sentence '+str(sentID))
+                        logging.info('empty word in sentence '+str(sentID))
                         word = ''
 
                     # strip tailing space
@@ -873,33 +874,33 @@ def get_phonology(xmlsent, speaker_code, sentID, fileid):
     diagnostic_info = '"'+' '.join(words)+'" ('+fileid+': '+str(sentID)+')'
 
     if (len(actual_words) > 0) and (speaker_code != 'CHI'):   
-        print('Actual phonology tier is populated for a non child speaker! '+diagnostic_info)
+        logging.warning('Actual phonology tier is populated for a non child speaker! '+diagnostic_info)
 
     if (len(model_words) > 0) and (speaker_code != 'CHI'):   
-        print('Model phonology tier is populated for a non child speaker! '+diagnostic_info)
+        logging.warning('Model phonology tier is populated for a non child speaker! '+diagnostic_info)
 
     # Prep the phonology in preparation to merge back in when tokens are ready
     if (len(actual_words) == 0) and (speaker_code == 'CHI'):
         if len(xmlsent.findall('.//{%s}actual' % NS)) > 0:
-            print('Actual pho tier was found in a weird place! '+diagnostic_info)
+            logging.warning('Actual pho tier was found in a weird place! '+diagnostic_info)
             import pdb
             pdb.set_trace()
             #[ ] are there instances where phonology is embedded at a different level?
         else:
             
             if not 'xxx' in words: #cut down on logging
-                print("No 'actual' phonetic transcript! " + diagnostic_info)
+                logging.warning("No 'actual' phonetic transcript! " + diagnostic_info)
 
     if (len(model_words) == 0) and (speaker_code == 'CHI'):
         if len(xmlsent.findall('.//{%s}model' % NS)) > 0:
-            print('Model pho tier was found in a weird place! '+diagnostic_info)
+            logging.warning('Model pho tier was found in a weird place! '+diagnostic_info)
             import pdb
             pdb.set_trace()
             #[ ] are there instances where phonology is embedded at a different level?
         else:
             
             if not 'xxx' in words: #cut down on logging
-                print("No 'model' phonetic transcript! " + diagnostic_info)
+                logging.warning("No 'model' phonetic transcript! " + diagnostic_info)
             
     if len(actual_words) > 0:
         actual_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in actual_words]
