@@ -1,7 +1,7 @@
 source ~/.profile
 echo "Creating new database..."
 cd static
-cat new_dev_db_test2.sql | mysql -u root -p"$ROOT_PASS" childes_db_dev_test2
+cat static/new_dev_db_test2.sql | mysql -u root -p"$ROOT_PASS" childes_db_dev
 echo "Enforcing schema..."
 cd ../
 python3 manage.py migrate db
