@@ -8,14 +8,14 @@ def bulk_write(token_store, transcript, Token):
     t1 = time.time()        
     with transaction.atomic():
         Token.objects.bulk_create(token_store, batch_size=1000)
-    print("("+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
+    logging.info("("+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
 def flatten_list(hierarchical_list, list_name = None):    
     # list_name is for debugging
     if list_name is not None:
-        print('Flattening '+list_name+' ('+str(len(list_name))+' objects)...')
-        print('Example record:')
-        print(hierarchical_list)
+        logging.debug('Flattening '+list_name+' ('+str(len(list_name))+' objects)...')
+        logging.debug('Example record:')
+        logging.debug(hierarchical_list)
 
     return([item for sublist in hierarchical_list for item in sublist if item is not None])
 

@@ -101,11 +101,11 @@ def test_single_corpus(collection_root, selected_corpus, data_source, selected_c
 
     results.append(process_collection(collection_root, selected_collection, data_source, pool, pid_dict, parallelize=False, selected_corpora = [selected_corpus]))
 
-    print('Results:') # this is where error messages should be caught    
+    logging.info('Results:') # this is where error messages should be caught    
     flat_results = flatten_list(results)    
-    print(flat_results)
+    logging.info(flat_results)
  
-    print('Finished processing single corpus in '+str(round((time.time() - single_corpus_start_time) / 60., 3))+' minutes')
+    logging.info('Finished processing single corpus in '+str(round((time.time() - single_corpus_start_time) / 60., 3))+' minutes')
 
 
 def list_directory(directory, type):
@@ -199,7 +199,7 @@ def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict
     if pid_dict is not None:
         # operating in a  parallel context
         if pid in pid_dict:
-            print('File already processed')
+            logging.debug('File already processed')
             return None
         else:
             pid_dict[pid] = True 
@@ -284,7 +284,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         all_utterance_token_store = process_utterance_tokens(tokens, utterance, token_store, all_utterance_token_store, utterance_type, speaker, transcript, target_child, Token)
         t1 = time.time()        
         Token.objects.bulk_create(token_store, batch_size=1000)
-        print("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
+        logging.info("("+transcript.corpus_name+'/'+transcript.filename+") Token, utterance bulk calls completed in "+str(round(time.time() - t1, 3))+' seconds')
 
 
     token_store = flatten_list(all_utterance_token_store)

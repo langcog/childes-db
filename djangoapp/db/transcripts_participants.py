@@ -8,7 +8,7 @@ import os
 def get_or_create_participant(corpus, attr_map, Participant, target_child=None):
 
     if not attr_map:
-        print('attr_map is None in get_or_create_participant')
+        logging.debug('attr_map is None in get_or_create_participant')
         return None
 
     age = parse_age(attr_map.get('age'))
