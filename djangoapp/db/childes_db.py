@@ -8,6 +8,7 @@ import traceback
 import multiprocessing
 import glob
 
+from multiprocessing_logging import install_mp_handler
 from django import db
 from django.db.models import Avg, Count, Sum
 import db.models
@@ -39,10 +40,10 @@ def execute_wrapper(*args, **kwargs):
         try:
             return original(*args, **kwargs)            
         except OperationalError as e:
-            print('Deadlock... retry #'+str(attempts))            
+            logging.warning('Deadlock... retry #'+str(attempts))            
             code = e.args[0]
             if attempts == (attempt_limit - 1) or code != 1213:
-                print('!!!! Deadlock retries exhausted !!!!!')
+                logging.warning('!!!! Deadlock retries exhausted !!!!!')
                 raise e
             attempts += 1
             time.sleep(attempts*.5) #linear backoff
@@ -53,37 +54,43 @@ django.db.backends.utils.CursorWrapper.execute = execute_wrapper
 def populate_db(collection_root, data_source, selected_collection=None, parallelize=True):    
 
     populate_db_start_time = time.time()
-    multiprocessing.log_to_stderr()
-    logger = multiprocessing.get_logger()
-    logger.setLevel(logging.INFO)
-
+    logging.basicConfig(level = logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("/home/snair/childes-db/childes_db.log"),
+        logging.StreamHandler()
+    ])
+    logging.info("Populating database")
     results = []
 
-    if parallelize:
-        manager = multiprocessing.Manager()
-        pid_dict = manager.dict()
-        pool = multiprocessing.Pool()
-    else:
-        pool = None
-        pid_dict = {}
+    try:
+        if parallelize:
+            install_mp_handler()
+            manager = multiprocessing.Manager()
+            pid_dict = manager.dict()
+            pool = multiprocessing.Pool()
+        else:
+            pool = None
 
-    for collection_name in next(os.walk(collection_root))[1]:       
-        if selected_collection and collection_name != selected_collection:
-            continue # skip it if it isn't the selected collection        
-        results.append(process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize))
+        for collection_name in next(os.walk(collection_root))[1]:       
+            if selected_collection and collection_name != selected_collection:
+                    continue # skip it if it isn't the selected collection        
+            results.append(process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize))
 
-    if parallelize:
-        pool.close()
-        pool.join()
+        if parallelize:
+            pool.close()
+            pool.join()
 
-        print('Results:') # this is where error messages should be caught    
-        flat_results = flatten_list(results)
-        for i in range(len(flat_results)):
-            print(str(i))
-            print(flat_results[i].get())
+            logging.info('Results:') # this is where error messages should be caught    
+            flat_results = flatten_list(results)
+            for i in range(len(flat_results)):
+                logging.info("Transcript ID " + str(i))
+                logging.info(flat_results[i].get())
+    except:
+        logging.exception("Error in data processing")
         
     
-    print('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
+    logging.info('Finished processing all corpora in '+str(round((time.time() - populate_db_start_time) / 60., 3))+' minutes')
 
 def test_single_corpus(collection_root, selected_corpus, data_source, selected_collection):
     
@@ -112,7 +119,7 @@ def process_collection(collection_root, collection_name, data_source, pool, pid_
     
     from db.models import Collection
 
-    print('Processing collection '+collection_name+' at '+os.path.join(collection_root, collection_name))    
+    logging.info('Processing collection '+collection_name+' at '+os.path.join(collection_root, collection_name))    
     t0 = time.time()
     collection = Collection.objects.create(name=collection_name, data_source = data_source)
 
@@ -123,22 +130,13 @@ def process_collection(collection_root, collection_name, data_source, pool, pid_
     for root, dirnames, filenames in os.walk(os.path.join(collection_root, collection_name)):
         for filename in fnmatch.filter(filenames, '*.zip_placeholder'):
             corpora_to_process.append(os.path.join(root, filename.replace('.zip_placeholder','')))    
-    
-    if selected_corpora is None:
-        pass
-    else:
-        # find any corpora that are in the selected corpus list
-        selected_corpus_index = np.argwhere([any([x in corpus_name for x in  selected_corpora]) for corpus_name in corpora_to_process])[0]
-        # select these from the set of corpora to process
-        corpora_to_process = np.array(corpora_to_process)[selected_corpus_index]        
-    
-    print('Corpus contains '+str(len(corpora_to_process)) +' sub corpora')
+    logging.info('Corpus contains '+str(len(corpora_to_process)) +' sub corpora')
 
     results = []
     for corpus_path in corpora_to_process:
         results.append(process_corpus(corpus_path, os.path.basename(os.path.normpath(corpus_path)), collection_name, data_source, pool, pid_dict, parallelize))
 
-    print('Finished collection '+collection_name +' in '+str(round(time.time() - t0, 3))+' seconds')
+    logging.info('Finished collection '+collection_name +' in '+str(round(time.time() - t0, 3))+' seconds')
     return(flatten_list(results))
 
         
@@ -148,7 +146,7 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
 
     collection = Collection.objects.get(name = collection_name, data_source = data_source)
 
-    print('Processing corpus '+corpus_name+' at '+corpus_root)
+    logging.info('Processing corpus '+corpus_name+' at '+corpus_root)
 
     processed_file_results = []
 
@@ -160,7 +158,7 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
                 dirs_with_xml.append(root)
     dirs_with_xml = np.unique(dirs_with_xml)
 
-    print('('+corpus_name+') Number of sub-directories in corpus: '+str(len(dirs_with_xml)))
+    logging.info('('+corpus_name+') Number of sub-directories in corpus: '+str(len(dirs_with_xml)))
     
     # Create the corpus object
     corpus = Corpus.objects.create(name=corpus_name, collection=collection, collection_name=collection.name, data_source = data_source)    
@@ -172,7 +170,7 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
 
     for dir_with_xml in dirs_with_xml:
 
-        print('('+corpus_name+') Processing XML directory: '+dir_with_xml)
+        logging.info('('+corpus_name+') Processing XML directory: '+dir_with_xml)
         nltk_corpus = CHILDESCorpusReader(dir_with_xml, '.*.xml')                        
         for fileid in nltk_corpus.fileids(): # Iterate over all transcripts in this corpus               
 
@@ -182,10 +180,10 @@ def process_corpus(corpus_root, corpus_name, collection_name, data_source,  pool
             else: 
                 processed_file_results.append(process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, None))
 
-        print('('+corpus_name+') Finished directory '+dir_with_xml)    
+        logging.info('('+corpus_name+') Finished directory '+dir_with_xml)    
     
     return(processed_file_results)
-    print('Finished corpus!')   
+    logging.info('Finished corpus!')   
 
 
 def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict):
@@ -193,6 +191,7 @@ def process_file(fileid, dir_with_xml, corpus, collection, nltk_corpus, pid_dict
     django.db.connections.close_all() # make sure that there are no connnections to re-use
     # Models need to be imported again because they are un-pickleable    
     from db.models import Collection, Transcript, Participant, Utterance, Token, Corpus, TokenFrequency, TranscriptBySpeaker
+
 
     metadata = nltk_corpus.corpus(fileid)[0]
     
@@ -354,7 +353,7 @@ def process_utterances(nltk_corpus, fileid, transcript, participants, target_chi
         TranscriptBySpeaker.objects.bulk_create(TranscriptBySpeaker_store, batch_size=1000) 
     with transaction.atomic():
         TokenFrequency.objects.bulk_create(TokenFrequency_store, batch_size=1000) 
-    print("("+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
+    logging.info("("+transcript.filename+") TranscriptBySpeaker, TokenFrequency bulk calls completed in "+str(round(time.time() - t2, 3))+' seconds')
 
     return('success')
 
