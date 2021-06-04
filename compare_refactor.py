@@ -1,6 +1,7 @@
 import os
 import MySQLdb
 import pandas as pd
+import numpy as np
 import pdb
 import os
 from tqdm import tqdm
@@ -49,18 +50,16 @@ def connect_to_childes(db_version, db_args = None):
                     charset = 'utf8')
     return childes_con
 
-def query_hash(con, query, transcript_id, column_format):
+def query_hash(con, query, transcript_id):
     """
     Inputs:
     For a particular version of the database (specified in con), converts data corresponding to a specific transcript to a hashed form.
     Each row is hashed to a single value and the rows are placed in a Pandas series
     """
-    fmt_query = query % transcript_id
-    query_result = pd.read_sql(fmt_query, con)
-    query_result = query_result[column_format]
+    query_result = run_query(con, query, transcript_id, drop_id_cols=True)    
     return pd.util.hash_pandas_object(query_result)
 
-def compare_transcripts(expected_con, actual_con, expected_id, actual_id, expected_name, actual_name, token_fmt, utt_fmt):
+def compare_transcripts(expected_con, actual_con, expected_id, actual_id, expected_name, actual_name):
     """
     At the token and utterance level, compares the same transcript across two versions of DBs.
     token_fmt and utt_fmt are the column order on the EC2 instance.
@@ -69,14 +68,14 @@ def compare_transcripts(expected_con, actual_con, expected_id, actual_id, expect
     utt_query = "SELECT * FROM utterance WHERE transcript_id = %s"
     try:
         global passed_utt
-        assert all(query_hash(expected_con, utt_query, expected_id, utt_fmt) == query_hash(actual_con, utt_query, actual_id, utt_fmt))
+        assert all(query_hash(expected_con, utt_query, expected_id, utt_fmt) == query_hash(actual_con, utt_query, actual_id))
         passed_utt += 1
     except:
         global mismatched_utts
         mismatched_utts.append({expected_name: expected_id, actual_name: actual_id})
     try:
         global passed_token
-        assert all(query_hash(expected_con, token_query, expected_id, token_fmt) == query_hash(actual_con, token_query, actual_id, token_fmt))
+        assert all(query_hash(expected_con, token_query, expected_id, token_fmt) == query_hash(actual_con, token_query, actual_id))
         passed_token += 1
     except:
         global mismatched_tokens
@@ -98,13 +97,10 @@ if __name__ == "__main__":
     print(str(len(actual_transcripts) - len(id_map)) + " transcripts from main branch were excluded in refactor")
     print(str(len(actual_transcripts) - len(id_map)) + " transcripts from refactor branch were excluded in main")
 
-    strip_id_cols = lambda cols: [c for c in cols if not c.endswith('id')]  # IDs may be inconsistent across DB versions.
-    exp_token_cols = strip_id_cols(pd.read_sql("SELECT * FROM token WHERE 1 = 0", expected_con).columns)
-    exp_utt_cols = strip_id_cols(pd.read_sql("SELECT * FROM utterance WHERE 1 = 0", expected_con).columns)
 
     for index, row in tqdm(id_map.iterrows(), total = id_map.shape[0]):
         refactor_tid, main_tid = row['id_refactor'], row['id_main']
-        compare_transcripts(expected_con, actual_con, main_tid, refactor_tid, "main_id", "refactor_id", exp_token_cols, exp_utt_cols)
+        compare_transcripts(expected_con, actual_con, main_tid, refactor_tid, "main_id", "refactor_id")
 
         print("Token-Level: %s of %s transcripts match" % (passed_token, index + 1))
         print("Utterance-Level: %s of %s transcripts match" % (passed_utt, index + 1))
@@ -115,3 +111,30 @@ if __name__ == "__main__":
 
     pd.DataFrame(mismatched_tokens).to_csv('token_errors_refactor.log', index = False)
     pd.DataFrame(mismatched_utts).to_csv('token_errors_refactor.log', index = False)
+
+
+def compare_hashes(actual_transcript_id, expected_transcript_id, actual_con, expected_con, query):    	
+    '''compare hashes for records in two transcripts'''
+    actual_hash = pd.DataFrame({'actual':query_hash(actual_con, query, actual_transcript_id)})
+    expected_hash = pd.DataFrame({'expected' : query_hash(expected_con, query, expected_transcript_id)})
+    df_merged = actual_hash.merge(expected_hash, how='outer', left_index=True, right_index=True)
+    return(df_merged)
+
+def run_query(con, query, transcript_id, drop_id_cols):
+    '''Reusable base function for running a query through Pandas and returning a DF'''
+    fmt_query = query % transcript_id
+    query_result = pd.read_sql(fmt_query, con)    
+    if drop_id_cols:
+        dropcols = [c for c in query_result.columns if c.endswith('id')]
+        query_result = query_result.drop(dropcols, axis=1)
+    return(query_result)
+
+def compare_dfs(actual_transcript_id, expected_transcript_id, actual_con, expected_con, query, return_type = "df"):
+    '''Find columns with differences between two dataframes'''
+    actual_df = run_query(actual_con, query, actual_transcript_id, drop_id_cols=True)
+    expected_df = run_query(expected_con, query, expected_transcript_id, drop_id_cols=True)
+    comparison_df = actual_df.compare(expected_df)
+    if return_type == 'df':
+        return(comparison_df)
+    elif return_type == "colnames":
+        return(np.unique(comparison_df.columns.get_level_values(0)))        
