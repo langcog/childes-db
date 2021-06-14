@@ -1,0 +1,78 @@
+name,doc,in_reader
+CHAT,A single CHAT transcript.,FALSE
+freecode,Unscoped complex local events in the middle of an utterance.,FALSE
+postcode,"Code that can only occur at the end of an utterance. Currently arbitrary
+        information, although there are some conventions.",FALSE
+comment,A comment header.,FALSE
+tagMarker,"Tag marker, used in both main line and %mor.",FALSE
+e,Nonverbal event.,FALSE
+action,0,FALSE
+happening,"&=; happening, such as sneeze",FALSE
+mor-pre,mor preclitic,FALSE
+mor-post,mor postclitic,TRUE
+langs,What language(s) a word is in (if not the one in default scope).,TRUE
+linker,"Utterance initiators or linkers; they indicate the way to fit the current
+        utterance with an earlier one.",FALSE
+internal-media,Media bullet used only before a terminator.,FALSE
+media,"Media bullet is allowed at the end of an utterance only if after a
+        terminator.",TRUE
+r,[x number] in CHAT,TRUE
+t,Main line terminator with optional %mor information.,TRUE
+mt,"Terminator on %mor line, important for %gra.",FALSE
+pg,"Group purely for phonetic annotation purposes. Note that there are no main
+        line annotations allowed for the group.",TRUE
+sg,Group purely for sign annotation purposes. Note that there are no main line annotations allowed for the group. Grouping brackets 〔 and 〕 may be used.,FALSE
+sw,Atomic unit on the %sin tier.,FALSE
+ss,Syllable stress.  Either primary or secondary.,FALSE
+actual,"CHAT manual section on
+            this topic...",TRUE
+model,"CHAT manual section on
+            this topic...",TRUE
+pw,Phonetic transcription for a word.,TRUE
+ph,"Specifies a syllable constituent. The type is one of constituentTypeType.
+        Each constituent can constist of one or more phones identified by zero-based index of the
+        parent phonetic rep.",TRUE
+align,This type represents the alignment of two phonetic representations.,FALSE
+col,A single column in the alignment.,FALSE
+modelref,model reference,FALSE
+actualref,actual reference,FALSE
+underline,"Mark as underlined arbitrary content, for presentation purposes in CLAN.",FALSE
+italic,"Mark as italicized arbitrary content, for presentation purposes in CLAN.",FALSE
+long-feature,Long event.,FALSE
+nonvocal,Nonvocal material.,FALSE
+ca-delimiter,CA delimited material with begin/end.,FALSE
+segment-repetition,↫...↫ inside a word,FALSE
+ca-element,CA subwords that must occur inside a word.,FALSE
+pause,Pause at a point in an utterance.,FALSE
+overlap,Mark a scope for overlaps.,FALSE
+overlap-point,CA-style overlap,FALSE
+w,"A word. Note that there are lexical restrictions on what characters are
+        allowed in the text of a word.",TRUE
+g,"A group of material that is annotated. May be nested, i.e., a group may
+        contain groups as well as words and other material.",TRUE
+replacement,[: word1 ...]; indicate replacement of a word by one or more words instead. [:: word1 ...] to indicate that the word is a real word,TRUE
+mor,A group of words in %mor or %trn.,TRUE
+gra,GRASP data for a single word in %gra or %grt,TRUE
+quotation,Begin or end quoted material; “ and ”,FALSE
+k,Retracing and other markers.,FALSE
+duration,[# ...] duration annotation,FALSE
+s,Separator or tone direction marker.,TRUE
+mediaPic,A reference to a graphics file.,FALSE
+otherSpokenEvent,&*WHO=word; word spoken by someone else during an utterance.,FALSE
+mk,morphemes,TRUE
+menx,Morphemic translation: =word,TRUE
+mpfx,Morphemix prefix: word#,TRUE
+pos,%mor part of speech,TRUE
+mw,"Morphemic ""word"": the unit of a %mor line corresponding to a single non-compound word on the
+        main line.",TRUE
+mwc,"Morphemic ""compound word"" using +",FALSE
+shortening,"Unspoken segment in a word, coded in CHAT
+        by surrounding parentheses.",TRUE
+p,"Prosody inside a word: stress, blocking etc.",TRUE
+wk,Clitic or compound marker inside a word.,TRUE
+c,Morphological category,TRUE
+stem,"Morphological stem, alphanumeric",TRUE
+error,[*] or [* text],FALSE
+a,Dependent tier: scoped annotation that applies to a whole utterance.,TRUE
+ga,Inlined dependent tier: scoped annotation that applies to a group.,FALSE
+u,"A single utterance, along with all dependent information.",TRUE
