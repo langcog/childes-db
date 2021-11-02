@@ -131,6 +131,12 @@ def process_collection(collection_root, collection_name, data_source, pool, pid_
             corpora_to_process.append(os.path.join(root, filename.replace('.zip_placeholder','')))    
     logging.info('Corpus contains '+str(len(corpora_to_process)) +' sub corpora')
 
+    # limit the files to those in the selected corpus
+    if selected_corpora is not None:
+        include_mask = np.array([np.any([x.find(y) != -1  for y in selected_corpora])  for x in corpora_to_process])
+
+    corpora_to_process =np.array(corpora_to_process)[include_mask]
+    
     results = []
     for corpus_path in corpora_to_process:
         results.append(process_corpus(corpus_path, os.path.basename(os.path.normpath(corpus_path)), collection_name, data_source, pool, pid_dict, parallelize))
