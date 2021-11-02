@@ -1,3 +1,5 @@
+# example invocation: python3 manage.py compare_databases --old_db_name 2020.1  --new_db_name childes_db_dev_test2
+
 from django.core.management import BaseCommand
 import os
 import MySQLdb
