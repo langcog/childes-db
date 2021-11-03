@@ -12,3 +12,5 @@ config.json
 *.pyc
 *.log
 djangoapp/.idea
+.Rproj.user
+.Rhistory
