@@ -58,11 +58,19 @@ def compare_dfs(old_transcript_id, new_transcript_id, old_db_con, new_db_con,  q
     '''Find columns with differences between two dataframes; now deprecated in favor of compare_transcripts'''
     old_db_df = run_query(old_db_con, query, old_transcript_id, drop_id_cols=True)
     new_db_df = run_query(new_db_con, query, new_transcript_id, drop_id_cols=True)    
-    comparison_df = new_db_df.compare(old_db_df)
-    if return_type == 'df':
-        return(comparison_df)
-    elif return_type == "colnames":
-        return(np.unique(comparison_df.columns.get_level_values(0)))        
+    old_db_df.sort_index(inplace=True)
+    new_db_df.sort_index(inplace=True)
+    try:
+        comparison_df = new_db_df.compare(old_db_df)
+
+        if return_type == 'df':
+            return({'comparison_df': comparison_df})
+        elif return_type == "colnames":
+            return(np.unique(comparison_df.columns.get_level_values(0)))        
+    except:        
+        return({'old_table': old_db_df, 'new_table': new_db_df}) 
+    
+    
 
 #The class must be named Command, and subclass BaseCommand
 class Command(BaseCommand):
@@ -106,51 +114,81 @@ class Command(BaseCommand):
         new_transcripts = pd.read_sql(transcript_query, new_db_con)
 
         #Output should be a DF with local transcript ID, EC2 transcript ID, and filename.
-        id_map = new_transcripts.merge(old_transcripts, on = 'filename', how = 'outer', suffixes = ['_new', '_old'])
+        id_map = new_transcripts.merge(old_transcripts, on = 'filename', how = 'outer', suffixes = ['_new', '_old'])    
+    
         
         in_new_but_not_old = id_map.loc[id_map.id_old.isna()]
         in_old_but_not_new = id_map.loc[id_map.id_new.isna()]
         
         print(str(len(in_new_but_not_old)) + " transcripts from the new database were not present in the old database")
-        print(str(len(in_old_but_not_new)) + " transcripts from old database were not present in the new database")
-
-        id_map_both_attested = id_map.dropna()
+        print(str(len(in_old_but_not_new)) + " transcripts from old database were not present in the new database")        
 
         # initialize directories that aren't
         os.system("mkdir -p utt_mismatch_csvs")
         os.system("mkdir -p token_mismatch_csvs")
 
         transcript_results = [] 
-        for index, row in tqdm(id_map_both_attested.iterrows(), total = id_map_both_attested.shape[0]):                
-            # first, check if the utts match up at the transcript level:        
-            utt_query = "SELECT * FROM utterance WHERE transcript_id = %s"
-            utt_hash_mismatch = compare_hashes(row['id_old'], row['id_new'], new_db_con, old_db_con,  utt_query)
-            if len(utt_hash_mismatch) > 0:
-                utts_passed = False
-                utt_comparison = compare_dfs(row['id_old'], row['id_new'], old_db_con, new_db_con,  utt_query, "df")
+        for index, row in tqdm(id_map.iterrows(), total = id_map.shape[0]):     
 
-                utt_comparison.to_csv(os.path.join('utt_mismatch_csvs', row['filename'].replace('.xml','.csv').replace('/','_')), index = False)
+            if np.isnan(row['id_old']) or np.isnan(row['id_new']):
+                # one of the transcripts is missing
+                                
+                tokens_passed = None
+                utts_passed = None
+                
             else:
-                utts_passed = True
+                # first, check if the utts match up at the transcript level:        
+                utt_query = "SELECT * FROM utterance WHERE transcript_id = %s"
+                utt_hash_mismatch = compare_hashes(row['id_old'], row['id_new'], new_db_con, old_db_con,  utt_query)
+                if len(utt_hash_mismatch) > 0:
+                    utts_passed = False
+                    utt_comparison = compare_dfs(row['id_old'], row['id_new'], old_db_con, new_db_con,  utt_query, "df")
 
-            # then check if the tokens match up at the transcript level: 
-            token_query = "SELECT * FROM token WHERE transcript_id = %s"
-            token_hash_mismatch = compare_hashes(row['id_old'], row['id_new'], new_db_con, old_db_con,  token_query)
-            if len(token_hash_mismatch) > 0:
-                tokens_passed = False
-                token_comparison = compare_dfs(row['id_old'], row['id_new'], old_db_con, new_db_con,  token_query, "df")
+                    if 'comparison_df' in utt_comparison.keys():
+                        # if there are the same number of records, use the comparison function
+                        utt_comparison['comparison_df'].to_csv(os.path.join('utt_mismatch_csvs', row['filename'].replace('.xml','.csv').replace('/','_')), index = False)
 
-                token_comparison.to_csv(os.path.join('token_mismatch_csvs', row['filename'].replace('.xml','.csv').replace('/','_')), index = False)
-            else:
-                tokens_passed = True
+                    else:
+                        # if there is a different number of records, then write out the datasets separately
+                        utt_comparison['old_table'].to_csv(os.path.join('utt_mismatch_csvs', row['filename'].replace('.xml','_old.csv').replace('/','_')), index = False)
 
-            # keep a record for this specific transcript
+                        utt_comparison['new_table'].to_csv(os.path.join('utt_mismatch_csvs', row['filename'].replace('.xml','_new.csv').replace('/','_')), index = False)
+
+                        
+                else:
+                    utts_passed = True
+
+                # then check if the tokens match up at the transcript level: 
+                token_query = "SELECT * FROM token WHERE transcript_id = %s"
+                token_hash_mismatch = compare_hashes(row['id_old'], row['id_new'], new_db_con, old_db_con,  token_query)
+                if len(token_hash_mismatch) > 0:
+                    tokens_passed = False
+                    token_comparison = compare_dfs(row['id_old'], row['id_new'], old_db_con, new_db_con,  token_query, "df")
+
+                    if 'comparison_df' in token_comparison.keys():
+                        # if there are the same number of records, use the comparison function
+                        token_comparison['comparison_df'].to_csv(os.path.join('token_mismatch_csvs', row['filename'].replace('.xml','.csv').replace('/','_')), index = False)
+
+                    else:
+                        # if there is a different number of records, then write out the datasets separately
+
+                        token_comparison['old_table'].to_csv(os.path.join('token_mismatch_csvs', row['filename'].replace('.xml','_old.csv').replace('/','_')), index = False)
+
+                        token_comparison['new_table'].to_csv(os.path.join('token_mismatch_csvs', row['filename'].replace('.xml','_new.csv').replace('/','_')), index = False)
+
+
+                else:
+                    tokens_passed = True
+
+            # keep a record for this specific transcript            
+            
             transcript_results.append(
                 {'filename': row['filename'],
                 'old_transcript_id': row['id_old'], 
                 'new_transcript_id': row['id_new'],
                 'utts_passed': utts_passed,
-                'tokens_passed': tokens_passed}
+                'tokens_passed': tokens_passed,                
+                }
             )
 
         # write out all of the transcriot records

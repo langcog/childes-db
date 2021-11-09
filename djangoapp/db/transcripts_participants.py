@@ -5,7 +5,7 @@ from django.db import transaction
 
 import os
 
-def get_or_create_participant(corpus, attr_map, Participant, target_child=None):
+def get_or_create_participant(corpus, attr_map, Participant, fileid, target_child=None):
 
     if not attr_map:
         logging.debug('attr_map is None in get_or_create_participant')
@@ -94,7 +94,7 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
     # Save target child object
     if nltk_target_child:
         # Get or create django participant object for target child
-        target_child = get_or_create_participant(corpus, nltk_target_child, Participant)
+        target_child = get_or_create_participant(corpus, nltk_target_child, Participant, fileid)
 
         # This participant is its own target child
         target_child.target_child = target_child
@@ -112,7 +112,7 @@ def create_transcript_and_participants(dir_with_xml, nltk_corpus, fileid, corpus
 
     # Save all other participants
     for nltk_participant in nltk_participants.values():
-        participant = get_or_create_participant(corpus, nltk_participant, Participant, target_child) 
+        participant = get_or_create_participant(corpus, nltk_participant, Participant, fileid, target_child) 
         result_participants.append(participant)
 
     result_participants = [x for x in result_participants if x is not None]

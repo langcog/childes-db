@@ -2,7 +2,7 @@ import os
 import time
 import datetime
 import json
-#i#i#import config
+#import config
 import wget
 import subprocess
 import argparse

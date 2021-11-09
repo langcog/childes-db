@@ -57,7 +57,7 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
     logging.basicConfig(level = logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
-        logging.FileHandler("/home/snair/childes-db/childes_db.log"),
+        logging.FileHandler("populate_db.log"),
         logging.StreamHandler()
     ])
     logging.info("Populating database")
@@ -134,8 +134,7 @@ def process_collection(collection_root, collection_name, data_source, pool, pid_
     # limit the files to those in the selected corpus
     if selected_corpora is not None:
         include_mask = np.array([np.any([x.find(y) != -1  for y in selected_corpora])  for x in corpora_to_process])
-
-    corpora_to_process =np.array(corpora_to_process)[include_mask]
+        corpora_to_process =np.array(corpora_to_process)[include_mask]
     
     results = []
     for corpus_path in corpora_to_process:
