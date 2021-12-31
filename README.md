@@ -76,7 +76,14 @@ To compute the correlation between the Transcript-Speaker counts as computed wit
 
 `python3 manage.py test_frequency`
 
-If this number is less than .997, check why.
+If this number is less than .997, check why. Note that this aggregates by speaker role *within* each transcript, so it won't be able to detect when there is a problem with reliably identifying a child across different transcripts (see issue #61).
+
+To check how the contents of one childes-db database differ from another, we have a Django management command:
+
+`python3 manage.py compare_databases --old_db_name 2020.1  --new_db_name childes_db_dev_test2`. 
+
+This will hash each record -- either token or utterance -- for each transcript and check which ones have changed and put CSVs into directories entitled `utt_mismatch_csvs` and `token_mismatch_csvs`.
+
 
 ### Deployment to EC2
 

@@ -102,7 +102,7 @@ class Utterance(Model):
 
 
 class Token(Model):
-    gloss = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    gloss = CharField(db_index=True, max_length=511, blank=True, default=None, null=True)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None, on_delete=DO_NOTHING)
     language = CharField(max_length=255, blank=True, default=None, null=True)
     token_order = IntegerField(blank=True, null=True, default=None)
@@ -143,7 +143,7 @@ class Token(Model):
 class TokenFrequency(Model):
     transcript = ForeignKey(Transcript, blank=True, null=True, default=None, on_delete=DO_NOTHING)
     corpus = ForeignKey(Corpus, blank=True, null=True, default=None, on_delete=DO_NOTHING)
-    gloss = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)
+    gloss = CharField(db_index=True, max_length=511, blank=True, default=None, null=True)
     count = IntegerField(db_index=True, blank=True, null=True, default=None)
     speaker = ForeignKey(Participant, blank=True, null=True, default=None, on_delete=DO_NOTHING)
     speaker_role = CharField(db_index=True, max_length=255, blank=True, default=None, null=True)

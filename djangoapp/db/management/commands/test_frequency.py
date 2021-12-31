@@ -12,7 +12,7 @@ import fnmatch
 from pathlib import Path
 
 
-COLLECTION_ROOTS = ['/shared_hd2/childes-db/2020.1/candidate/phonbank.talkbank.org/data', '/shared_hd2/childes-db/2020.1/candidate/childes.talkbank.org/data']
+COLLECTION_ROOTS = ['/shared_hd2/childes-db/2021.1/candidate/phonbank.talkbank.org/data', '/shared_hd2/childes-db/2021.1/candidate/childes.talkbank.org/data']
 PATTERN = 'Total number of different item types used\n(.*)Total number of items'
 SPEAKER_PATTERN = 'Speaker:(.*):'
 CLAN_CMD = "~/utils/unix-clan/unix/bin/freq "
@@ -154,6 +154,3 @@ class Command(BaseCommand):
         print("Correlation coefficient (Pearson's r)")
         print(coeff)
         os.system("echo %s > word_frequency_correlation.txt" % coeff)
-
-        import pdb
-        pdb.set_trace()
