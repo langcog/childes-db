@@ -14,6 +14,7 @@ __docformat__ = 'epytext en'
 
 import re   
 from collections import defaultdict
+import logging
 import warnings
 warnings.filterwarnings("ignore", message="numpy.dtype size changed")
 warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
@@ -23,15 +24,13 @@ import copy
 from nltk.util import flatten
 from nltk.corpus.reader.util import concat
 from nltk.corpus.reader.xmldocs import XMLCorpusReader, ElementTree
+from db.reader_utils import *
+import pdb
 
 # to resolve the namespace issue
 NS = 'http://www.talkbank.org/ns/talkbank'
 
 from xml.dom import minidom
-def prettify(ET, fname):
-    xmlstr = minidom.parseString(ET.tostring(root)).toprettyxml(indent="   ")
-    with open(fname, "w") as f:
-        f.write(xmlstr)
 
 class CHILDESCorpusReader(XMLCorpusReader):
     """
@@ -252,29 +251,9 @@ class CHILDESCorpusReader(XMLCorpusReader):
     def _getMLU(self, fileid, speaker):
         sents = self._get_words(fileid, speaker=speaker, sent=True, stem=True,
                     relation=False, pos=True, strip_space=True, replace=True)
-        results = []
-        lastSent = []
-        numFillers = 0
-        sentDiscount = 0
-        for sent in sents:
-            posList = [pos for (word,pos) in sent]
-            # if any part of the sentence is intelligible
-            if any(pos == 'unk' for pos in posList):
-                next
-            # if the sentence is null
-            elif sent == []:
-                next
-            # if the sentence is the same as the last sent
-            elif sent == lastSent:
-                next
-            else:
-                results.append([word for (word,pos) in sent])
-                # count number of fillers
-                if len(set(['co',None]).intersection(posList)) > 0:
-                    numFillers += posList.count('co')
-                    numFillers += posList.count(None)
-                    sentDiscount += 1
-            lastSent = sent
+
+        results, lastSent, numFillers, sentDiscount = mlu_calc_components(sents)
+
         try:
             thisWordList = flatten(results)
             # count number of morphemes
@@ -359,61 +338,25 @@ class CHILDESCorpusReader(XMLCorpusReader):
         return pos
 
     def _get_morphology(self, xmlword):
-        morpheme_length = 0
+        NS = 'http://www.talkbank.org/ns/talkbank'
 
-        # do i have to make sure this doesn't belong to the clitic...
-        # TODO comment xml structure here. also get mor first
-        prefixes = []
-        xmlprefixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mpfx' % (NS, NS, NS))
-        for xmlprefix in xmlprefixes:
-            prefixes.append(xmlprefix.text)
-            morpheme_length += 1
+        #Calling functions from reader_utils
+        prefixes = get_list_morphemes('.//{%s}mor/{%s}mw/{%s}mpfx' % (NS, NS, NS), xmlword)
         prefix = ' '.join(prefixes)
 
-        pos = ''
-        xml_pos_category = xmlword.findall('.//{%s}mor/{%s}mw/{%s}pos/{%s}c' % (NS, NS, NS, NS))
-        if xml_pos_category:
-            pos = xml_pos_category[0].text
-            xml_pos_subcategories = xmlword.findall('.//{%s}mor/{%s}mw/{%s}pos/{%s}s' % (NS, NS, NS, NS))
-            for xml_pos_subcategory in xml_pos_subcategories:
-                pos += ":" + xml_pos_subcategory.text
+        pos = get_single_morpheme('.//{%s}mor/{%s}mw/{%s}pos/{%s}c' % (NS, NS, NS, NS), xmlword)
 
-        stem = ''
-        xmlstem = xmlword.findall('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS))
-        if xmlstem:
-            stem = xmlstem[0].text
-            morpheme_length += 1
+        stem = get_single_morpheme('.//{%s}mor/{%s}mw/{%s}stem' % (NS, NS, NS), xmlword)
 
-        suffixes = []
-        # why go down the path like this...?
-        # hopefully mk catches both suffixes and fusional suffixes
-        xml_suffixes = xmlword.findall('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS))
-        for xml_suffix in xml_suffixes:
-            suffixes.append(xml_suffix.text)
-            morpheme_length += 1
+        suffixes = get_list_morphemes('.//{%s}mor/{%s}mw/{%s}mk' % (NS, NS, NS), xmlword)
+        suffix = " ".join(suffixes)
 
-        suffix = ' '.join(suffixes)
+        english_translation = get_single_morpheme('.//{%s}mor/{%s}menx' % (NS, NS), xmlword)
+        clitic = get_single_morpheme('.//{%s}mor/{%s}mor-post' % (NS, NS), xmlword)
 
-        english_translation = '' # empty strings or null
-        xml_english_translation = xmlword.findall('.//{%s}mor/{%s}menx' % (NS, NS))
-        if xml_english_translation:
-            english_translation = xml_english_translation[0].text
-
-
-        clitic = ''
-        xml_clitic = xmlword.findall('.//{%s}mor/{%s}mor-post' % (NS, NS))
-        if xml_clitic:
-            clitic_parts = xml_clitic[0].findall('.//{%s}mw' % NS)
-            if clitic_parts:
-                a = clitic_parts[0].findall('.//{%s}pos/{%s}c' % (NS, NS))
-                b = clitic_parts[0].findall('.//{%s}stem' % NS)
-                c = clitic_parts[0].findall('.//{%s}mk' % NS)
-                clitic = " ".join([a[0].text if a else "", b[0].text if b else "", c[0].text if c else ""])
-            morpheme_length += 1
-
-        return prefix, pos, stem, suffix, english_translation, clitic, morpheme_length if morpheme_length > 0 else None
-
-
+        morpheme_length = compute_morpheme_length([prefixes, stem, suffixes, clitic])
+        return {'prefix': prefix, 'pos': pos, 'stem': stem, 'english': english_translation, 'clitic': clitic, 'suffix': suffix,
+            'morpheme_length': morpheme_length}
 
     def _get_stem(self, xmlword):
         # stem
@@ -452,71 +395,55 @@ class CHILDESCorpusReader(XMLCorpusReader):
         # check if this file has phonological transcriptions        
         if xmldoc.find('.//{%s}pw' % NS) is not None:
             fileHasPhonology = True
-            print('File has phonological transcripts. Processing...')
+            logging.info('File ' + fileid + ' has phonological transcripts. Processing...')
         else:
             fileHasPhonology = False
-            print('File has no phonological transcripts. Skipping extraction of phonological information.')
+            logging.info('File ' + fileid + ' has no phonological transcripts. Skipping extraction of phonological information.')
 
-        results2 = []
+        processed_sents = []
         for xmlsent in xmldoc.findall('.//{%s}u' % NS):
 
-            # TODO confusing tuple structure, use map
-
-            utt = ()
+            # DONE confusing tuple structure, use map
+            utt = {}
 
             sentID = xmlsent.get('uID')
-            sents = []
-            # place this in map
-            speaker = xmlsent.get('who') # ME
+            speaker = xmlsent.get('who')
 
-            utt += (sentID, speaker)
+            utt['sent_id'] = sentID
+            utt['speaker'] = speaker
 
             tokens = []
-
             token_order = 0
-
             skip_replacement_counter = 0
 
             # extract utterance terminator
             terminator = xmlsent.find(".//{%s}t" % NS).attrib['type']
-            utt += (terminator,)
+            utt['term'] = terminator
 
             # get dependent tiers / annotations
             # TODO get a bunch of stuff and return in convenient format
-            annotations = []
-            annotation_elements = xmlsent.findall(".//{%s}a" % NS)
-            for element in annotation_elements:
-                annotation = {}
-                annotation['type'] = element.attrib.get('type')
-                annotation['flavor'] = element.attrib.get('flavor')
-                annotation['who'] = element.attrib.get('who')
-                annotation['text'] = element.text
-                annotations.append(annotation)
-
-            utt += (annotations,)
-            # does this capture the phonetic tier?
+            utt['annotations'] = get_annotations(xmlsent)
 
             # extract media info, if it exists
-            media = {}
-            media_element = xmlsent.findall(".//{%s}media" % NS)
+            utt['media'] = get_media_info(xmlsent)
+            token_phon_criteria = {} 
+            #Putting the booleans and transcriptions here for phonetic token extraction (see get_token_phonology in reader_utils)
 
-            if media_element:
-                media['start'] = media_element[0].attrib['start']
-                media['end'] = media_element[0].attrib['end']
-                media['unit'] = media_element[0].attrib['unit']
-
-            utt += (media,)
-
-
-            # Pull out the phonology tiers
             if fileHasPhonology:
+                        # Pull out the phonology tiers
                 actual_pho, model_pho = get_phonology(xmlsent, speaker, sentID, fileid)
                 num_tokens = len(xmlsent.findall('.//{%s}w' % NS))
                 include_actual_pho = num_tokens == len(actual_pho)
                 include_model_pho = num_tokens == len(model_pho)
+                token_phon_criteria = {'actual': {'include': include_actual_pho, 'phons': actual_pho},
+                        'model': {'include': include_model_pho, 'phons': model_pho}}
+
             else:
                 actual_pho = []
                 model_pho = []
+
+            utt['actual_pho'] = actual_pho
+            utt['model_pho'] = model_pho
 
             for xmlword in xmlsent.findall('.//{%s}w' % NS):
 
@@ -524,154 +451,98 @@ class CHILDESCorpusReader(XMLCorpusReader):
                 if skip_replacement_counter > 0:
                     skip_replacement_counter -= 1
                     continue
-
-                token = {}
-
-                if xmlword.get('type') == 'omission':                    
-                    continue
-
-                suffixStem = None
-
-                #xstr = lambda s: "" if s is None else unicode(s)                
-                xstr = lambda s: "" if s is None else s
-
-                if xmlword.find('.//{%s}langs' % (NS)):
-                    xmlword.text = xmlword.find('.//{%s}langs' % (NS)).tail
-
-                # handles compounds and ignores shortenings (?)
-                text_tags = ["{%s}wk" % NS, "{%s}p" % NS, "{%s}shortening" % NS]
-                if xmlword.findall('*'):
-                    word_tags = xmlword.findall('*')
-                    text = xstr(xmlword.text)
-                    for word_tag in word_tags:
-                        if word_tag.tag in text_tags:
-                            if word_tag.tag == "{%s}wk" % NS:
-                                text += "+"
-                            text += xstr(word_tag.text) + xstr(word_tag.tail)
-                    xmlword.text = text
-
-                if xmlword.text:
-                    word = xmlword.text
-                    token['gloss'] = xmlword.text.strip()
-                else:
-                    print('empty word in sentence '+ str(sentID))
-                    word = ''
-                    token['gloss'] = ''    
-
-                # check if this is a replacement, and then build rep, stem, etc from children
-                if xmlword.find('.//{%s}replacement' % (NS)):
-                    # save children in replacement field
-                    # iterate over children
-                    replacements = []
-                    prefix = []
-                    pos = []
-                    stems = []
-                    suffix = []
-                    english = []
-                    clitics = []
-                    relations = []
-                    morpheme_length = None
-                    children = xmlword.findall('.//{%s}w' % NS)
-                    for child in children:
-                        if child.text:
-                            replacements.append(child.text)
-
-                        prefix_result, pos_result, stem_result, suffix_result, english_result, clitic_result, morpheme_length_result = \
-                            self._get_morphology(child)
-
-                        if prefix_result:
-                            prefix.append(prefix_result)
-
-                        # pos_result = self._get_pos(child, None)
-                        if pos_result:
-                            pos.append(pos_result)
-
-                        # stem_result = self._get_stem(child)
-                        if stem_result:
-                            stems.append(stem_result)
-
-                        if suffix_result:
-                            suffix.append(suffix_result)
-
-                        if english_result:
-                            english.append(english_result)
-
-                        if clitic_result:
-                            clitics.append(clitic_result)
-
-                        relation_result = self._get_relation(child)
-                        if relation_result:
-                            relations.append(relation_result)
-
-                        if morpheme_length_result:
-                            if morpheme_length:
-                                morpheme_length += morpheme_length_result
-                            else:
-                                morpheme_length = morpheme_length_result
-
-                    token['replacement'] = ' '.join(replacements)
-                    token['prefix'] = ' '.join(prefix)
-                    token['pos'] = ' '.join(pos)
-                    token['stem'] = ' '.join(stems)
-                    token['suffix'] = ' '.join(suffix)
-                    token['english'] = ' '.join(english)
-                    token['clitic'] = ' '.join(clitics)
-                    token['relation'] = ' '.join(relations)
-                    token['morpheme_length'] = morpheme_length
-
-                    skip_replacement_counter = len(children)
-                else: # else get stem and pos for this word
-                    # word = word.strip()
-
-                    token['prefix'], token['pos'], token['stem'], token['suffix'], token['english'], token['clitic'], token['morpheme_length'] = \
-                        self._get_morphology(xmlword)
-
-                    # token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
-                    # token['pos'] = self._get_pos(xmlword, suffixStem)
-                    token['relation'] = self._get_relation(xmlword)
-
-
-
-                    # replacement_elems = filter(lambda x: x.tag == '{%s}w' % NS, [e for e in xmlword.iter() if e is not xmlword])
-                    # replacements = [r.text for r in replacement_elems]
-                    # replacement_str = ' '.join(replacements)
-                    # if replacement_str:
-                    #     token['replacement'] = replacement_str
-                    #     skip_replacement_counter = len(replacements)
-                # parent_map = dict((c, p) for p in tree.getiterator() for c in p)
-                #
-                # if parent_map.get(xmlword) and parent_map.get(xmlword).tag == '{%s}replacement' % NS:
-                #     last_token = tokens[len(tokens) - 1]
-                #     last_token['replacement'] = token['gloss']
-                #     continue # don't save this token in tokens array
-
-                        # strip tailing space
-                token_order += 1
-                token['order'] = token_order
-
-                # only include the phonetic information at the word level if it aligns with the set of words
-                if fileHasPhonology:
-                    if include_actual_pho:
-                        token['pho'] = actual_pho[(token_order -1)]
-                    else:
-                        # mismatch in actual_pho and utterance length; not including actual pho at the word level
-                        token['pho'] = ''
-                        
-                    if include_model_pho:
-                        token['mod'] = model_pho[(token_order -1)]
-                    else: 
-                        # mismatch in model_pho and utterance length; not including model pho at the word level
-                        token['mod'] = ''
-                else:
-                    # whole file does not have phonology
-                    token['pho'] = ''
-                    token['mod'] = ''
-
-                tokens.append(token)
+                token, token_order, skip_replacement_counter = self.get_token_for_utterance(xmlword, skip_replacement_counter, 
+                sentID, fileHasPhonology, token_phon_criteria, token_order)
+                if token:
+                    tokens.append(token)
                 # if suffixStem:
                 #     sents.append(suffixStem)
-            results2.append(utt + (tokens,) + (actual_pho,) + (model_pho,))
-        return results2
+            utt['tokens'] = tokens
+            processed_sents.append(utt)
+        return processed_sents
+
+    def get_token_for_utterance(self, xmlword, skip_replacement_counter,
+     sentID, fileHasPhonology, phon_criteria, token_order):
+     #Keeping the token populating code in a separate function
+        if xmlword.get('type') == 'omission':                    
+            return None, token_order, skip_replacement_counter
+        
+        token = {}
+        #xstr = lambda s: "" if s is None else unicode(s)
+        token['gloss'] = extract_gloss(xmlword, sentID)                
+
+        # check if this is a replacement, and then build rep, stem, etc from children
+        if xmlword.find('.//{%s}replacement' % (NS)):
+            # save children in replacement field
+            # iterate over children
+            replacements, relations, morphology, children_length = self.replacement_token_data(xmlword) 
+            token['replacement'] = ' '.join(replacements)
+            token['relation'] = ' '.join(relations)
+
+            for k in morphology.keys():
+                if k != 'morpheme_length':
+                    token[k] = ' '.join(morphology[k])
+            token['morpheme_length'] = morphology['morpheme_length']
+
+            skip_replacement_counter = children_length
+        else: # else get stem and pos for this word
+            # word = word.strip()
+            morph_dict = self._get_morphology(xmlword)
+            token.update(morph_dict)
+            # token['stem'] = self._get_stem(xmlword)  # if suffix, should be in same column
+            # token['pos'] = self._get_pos(xmlword, suffixStem)
+            token['relation'] = self._get_relation(xmlword)
+        token_order += 1
+        token['order'] = token_order
+
+        token = get_token_phonology(token, fileHasPhonology, phon_criteria, token_order)
+        return token, token_order, skip_replacement_counter
+
+    def replacement_token_data(self, xmlword):
+        """
+        If xmlword has replacements, iterates through all the children of the token 
+        and gets the following attributes: morphology (prefix, suffix, PoS, stem, English translation, clitic,
+        morpheme length), replacement text, and dependency relations.
+        Also outputs the number children such that 
+        """
+        replacements = []
+        relations = []
+
+        global_morphology = {
+            'prefix' : [],
+            'pos': [],
+            'stem': [],
+            'suffix': [],
+            'english': [],
+            'clitic': [],
+            'morpheme_length': None
+        }
+        children = xmlword.findall('.//{%s}w' % NS)
+        for child in children:
+            if child.text:
+                replacements.append(child.text)
+
+            child_morphology = self._get_morphology(child)
+
+            for key in child_morphology.keys():
+                if child_morphology[key]:
+                    if key == 'morpheme_length':
+                        if child_morphology['morpheme_length'] != None:
+                            if global_morphology['morpheme_length'] == None:
+                                global_morphology['morpheme_length'] = 0
+                            global_morphology[key] += child_morphology['morpheme_length']
+                    else:
+                        value = child_morphology[key]
+                        #FIXME Can we do global_morphology[key].append(value)?
+                        prev_global_value = global_morphology[key]
+                        prev_global_value.append(value)
+                        global_morphology[key] = prev_global_value
+
+            relation_result = self._get_relation(child)
+            if relation_result:
+                relations.append(relation_result)
+
+        return replacements, relations, global_morphology, len(children)
 
     def _get_words(self, fileid, speaker, sent, stem, relation, pos,
             strip_space, replace):
@@ -694,30 +565,7 @@ class CHILDESCorpusReader(XMLCorpusReader):
                     infl = None ; suffixStem = None
 
                     # getting replaced words
-                    xstr = lambda s: "" if s is None else unicode(s)
-                    if replace and xmlword.find('.//{%s}replacement' % (NS)):
-                        continue
-
-                    if xmlword.find('.//{%s}langs' % (NS)):
-                        xmlword.text = xmlword.find('.//{%s}langs' % (NS)).tail
-
-                    text_tags = ["{%s}wk" % NS, "{%s}p" % NS, "{%s}shortening" % NS]
-                    if xmlword.findall('*'):
-                        word_tags = xmlword.findall('*')
-                        text = xstr(xmlword.text)
-                        for word_tag in word_tags:
-                            if word_tag.tag in text_tags:
-                                if word_tag.tag == "{%s}wk" % NS:
-                                    text += "+"
-                                text += xstr(word_tag.text) + xstr(word_tag.tail)
-                        xmlword.text = text
-
-                    if xmlword.text:
-                        word = xmlword.text
-                    else:
-                        print('empty word in sentence '+str(sentID))
-                        word = ''
-
+                    word = extract_gloss(xmlword, sentID)
                     # strip tailing space
                     if strip_space:
                         word = word.strip()
@@ -873,33 +721,33 @@ def get_phonology(xmlsent, speaker_code, sentID, fileid):
     diagnostic_info = '"'+' '.join(words)+'" ('+fileid+': '+str(sentID)+')'
 
     if (len(actual_words) > 0) and (speaker_code != 'CHI'):   
-        print('Actual phonology tier is populated for a non child speaker! '+diagnostic_info)
+        logging.warning('Actual phonology tier is populated for a non child speaker! '+diagnostic_info)
 
     if (len(model_words) > 0) and (speaker_code != 'CHI'):   
-        print('Model phonology tier is populated for a non child speaker! '+diagnostic_info)
+        logging.warning('Model phonology tier is populated for a non child speaker! '+diagnostic_info)
 
     # Prep the phonology in preparation to merge back in when tokens are ready
     if (len(actual_words) == 0) and (speaker_code == 'CHI'):
         if len(xmlsent.findall('.//{%s}actual' % NS)) > 0:
-            print('Actual pho tier was found in a weird place! '+diagnostic_info)
+            logging.warning('Actual pho tier was found in a weird place! '+diagnostic_info)
             import pdb
             pdb.set_trace()
             #[ ] are there instances where phonology is embedded at a different level?
         else:
             
             if not 'xxx' in words: #cut down on logging
-                print("No 'actual' phonetic transcript! " + diagnostic_info)
+                logging.warning("No 'actual' phonetic transcript! " + diagnostic_info)
 
     if (len(model_words) == 0) and (speaker_code == 'CHI'):
         if len(xmlsent.findall('.//{%s}model' % NS)) > 0:
-            print('Model pho tier was found in a weird place! '+diagnostic_info)
+            logging.warning('Model pho tier was found in a weird place! '+diagnostic_info)
             import pdb
             pdb.set_trace()
             #[ ] are there instances where phonology is embedded at a different level?
         else:
             
             if not 'xxx' in words: #cut down on logging
-                print("No 'model' phonetic transcript! " + diagnostic_info)
+                logging.warning("No 'model' phonetic transcript! " + diagnostic_info)
             
     if len(actual_words) > 0:
         actual_pho =  [''.join([x.text for x in y.findall('{%s}ph' % NS)]) for y in actual_words]
