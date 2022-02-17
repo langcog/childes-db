@@ -27,6 +27,7 @@ import sys
 import time
 import fnmatch
 import random
+import pdb
 
 import django.db.backends.utils
 from django.db import OperationalError
@@ -51,7 +52,7 @@ def execute_wrapper(*args, **kwargs):
 django.db.backends.utils.CursorWrapper.execute = execute_wrapper
 
 
-def populate_db(collection_root, data_source, selected_collection=None, parallelize=True):    
+def populate_db(collection_root, data_source, selected_collection=None, parallelize=False):    
 
     populate_db_start_time = time.time()
     logging.basicConfig(level = logging.INFO,
@@ -71,11 +72,10 @@ def populate_db(collection_root, data_source, selected_collection=None, parallel
             pool = multiprocessing.Pool()
         else:
             pool = None
-
-        for collection_name in next(os.walk(collection_root))[1]:       
-            if selected_collection and collection_name != selected_collection:
-                    continue # skip it if it isn't the selected collection        
-            results.append(process_collection(collection_root, collection_name, data_source, pool, pid_dict, parallelize))
+        nltk_corpus = CHILDESCorpusReader(collection_root, '.*.xml')
+        # pdb.set_trace()
+        for file_name in next(os.walk(collection_root))[1]:
+            results.append(process_file(file_name, collection_root, "corpus_placeholder", "collection_placeholder", nltk_corpus, {}))
 
         if parallelize:
             pool.close()

@@ -15,6 +15,7 @@ import numpy as np
 parser = argparse.ArgumentParser()
 parser.add_argument("--versions_root", help='root to place all updates')
 parser.add_argument("--version", help='version string for the new dataset')
+parser.add_argument("--base_url", help='URL for corpora (PhonBank and CHILDES talkbanks)')
 args = parser.parse_args()
 
 # set up some paths and directories
@@ -34,8 +35,11 @@ paths['wget_log'] = os.path.join(paths['logs'],'wget.log')
 xml_base_urls = ["https://childes.talkbank.org/data-xml/", "https://phonbank.talkbank.org/data-xml/"]
 cha_base_urls = ["https://childes.talkbank.org/data/", "https://phonbank.talkbank.org/data/"]
 
+urls = [args.base_url]
+if not args.base_url:
+	urls = xml_base_urls + cha_base_urls
 
-for base_url in cha_base_urls + xml_base_urls:	
+for base_url in urls:	
 
 	print('Downloading zip files with xml transcripts from '+base_url+'...')
 	wget_command = "wget -N -r -np -A.zip -o "+paths['wget_log']+" -e robots=off " + base_url	

@@ -41,7 +41,7 @@ def parse_age(age):
     age_in_days = 0
 
     # parse ISO 8601 time interval
-    for number, unit in re.findall('(?P<number>\d+)(?P<period>M|D|Y)', (age or '').split('T')[0]):
+    for number, unit in re.findall(r'(?P<number>\d+)(?P<period>M|D|Y)', (age or '').split('T')[0]):
         number = int(number)
         if unit == 'Y':
             age_in_days += number * 365.25
