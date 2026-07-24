@@ -23,3 +23,5 @@ pipeline/parquet_proto/
 pipeline/__pycache__/
 pipeline/*.log
 jp/
+pipeline/parquet_full/
+pipeline/parquet_proto/

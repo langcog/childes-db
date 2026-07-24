@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import warnings
 from datetime import date, datetime
 
@@ -190,6 +191,43 @@ def bullet_text(data):
     return " ".join(p for p in parts if p) or None
 
 
+def _pho_item_str(item):
+    """A PhoItem is a string or a group (list of strings)."""
+    if isinstance(item, str):
+        return item
+    if isinstance(item, list):
+        return " ".join(_pho_item_str(x) for x in item)
+    return str(item)
+
+
+def extract_phonology(utt):
+    """Return (actual_items, model_items) from an utterance's pho tiers.
+
+    Sources, in preference order:
+      * typed %pho / %mod tiers (PhonBank): dependent tier types 'Pho'/'Mod'
+        with data.items = list of PhoItem;
+      * %xpho / %xmod tiers (e.g. Providence, Davis): UserDefined tiers with
+        label 'xpho'/'xmod' and a whitespace-separated string.
+
+    Either element is None when that tier is absent.
+    """
+    pho = mod = None
+    xpho = xmod = None
+    for dt in utt.get("dependent_tiers", []):
+        t, data = dt.get("type"), dt.get("data")
+        if t == "Pho" and isinstance(data, dict):
+            pho = [_pho_item_str(x) for x in data.get("items") or []]
+        elif t == "Mod" and isinstance(data, dict):
+            mod = [_pho_item_str(x) for x in data.get("items") or []]
+        elif t == "UserDefined" and isinstance(data, dict):
+            if data.get("label") == "xpho" and isinstance(data.get("content"), str):
+                xpho = data["content"].split()
+            elif data.get("label") == "xmod" and isinstance(data.get("content"), str):
+                xmod = data["content"].split()
+    return (pho if pho is not None else xpho,
+            mod if mod is not None else xmod)
+
+
 def word_payload(item):
     """The Word object inside a content item (replaced_word wraps its word)."""
     return item["word"] if item["type"] == "replaced_word" else item
@@ -254,8 +292,10 @@ def walk_content(items, in_retrace, tokens, slots, unknown_types):
         elif t == "separator":
             # commas / tag marks (‡) / vocative marks („) get their own %mor
             # item (e.g. cm|cm) and thus occupy an alignable slot; CA/prosodic
-            # separators (e.g. ca_continuation) do not.
-            if item.get("kind") in ("comma", "tag", "vocative"):
+            # separators (e.g. ca_continuation) do not, and neither does
+            # anything inside a retrace (%mor skips retraced material).
+            if not in_retrace and item.get("kind") in ("comma", "tag",
+                                                       "vocative"):
                 slots.append(None)
         elif t in NON_WORD_TYPES:
             continue
@@ -462,21 +502,34 @@ SCHEMAS = {
 
 
 class ParquetSink:
-    """Streams row batches into one zstd parquet file per table."""
+    """Streams row batches into one zstd parquet file per table.
 
-    def __init__(self, out_dir):
+    With `part=None` (prototype mode) each table is a single file
+    `<out_dir>/<table>.parquet`. With a part name (full-run mode) each table
+    is a directory of per-corpus files `<out_dir>/<table>/<part>.parquet`,
+    which pyarrow.dataset reads transparently.
+    """
+
+    def __init__(self, out_dir, part=None):
         self.out_dir = out_dir
+        self.part = part
         os.makedirs(out_dir, exist_ok=True)
         self._writers = {}
+
+    def _path(self, table_name):
+        if self.part is None:
+            return os.path.join(self.out_dir, table_name + ".parquet")
+        d = os.path.join(self.out_dir, table_name)
+        os.makedirs(d, exist_ok=True)
+        return os.path.join(d, self.part + ".parquet")
 
     def write(self, table_name, rows):
         if not rows:
             return
         schema = SCHEMAS[table_name]
         if table_name not in self._writers:
-            path = os.path.join(self.out_dir, table_name + ".parquet")
             self._writers[table_name] = pq.ParquetWriter(
-                path, schema, compression="zstd")
+                self._path(table_name), schema, compression="zstd")
         self._writers[table_name].write_table(
             pa.Table.from_pylist(rows, schema=schema))
 
@@ -491,23 +544,39 @@ class ParquetSink:
 # ---------------------------------------------------------------------------
 
 class Processor:
-    def __init__(self, sink, chatter_bin=CHATTER_DEFAULT, data_source="CHILDES"):
+    def __init__(self, sink, chatter_bin=CHATTER_DEFAULT, data_source="CHILDES",
+                 id_offset=0, skip_pids=None):
+        """id_offset: base added to every per-corpus table id (participant,
+        transcript, utterance, token, token_morpheme, transcript_by_speaker,
+        token_frequency). The full-corpus driver gives each corpus a disjoint
+        id block so corpora can be processed in parallel with globally unique
+        ids and valid cross-table FKs. collection/corpus ids are managed by
+        the driver, not offset.
+
+        skip_pids: transcripts whose @PID is in this set are skipped entirely
+        (used to drop CHILDES-bank copies of transcripts that also exist in
+        the PhonBank tree, which carries the phonology tiers)."""
         self.sink = sink
         self.chatter_bin = chatter_bin
         self.data_source = data_source
+        self.id_offset = id_offset
+        self.skip_pids = skip_pids or frozenset()
         self.ids = {t: 0 for t in SCHEMAS}
         self.collections = {}      # name -> row dict
         self.corpora = {}          # (collection, name) -> row dict
         self.participants = {}     # lookup key -> row dict
         self.seen_pids = set()
-        self.stats = {"files": 0, "skipped_pid": 0, "slot_mismatch": 0,
+        self.stats = {"files": 0, "skipped_pid": 0, "skipped_invalid": 0,
+                      "skipped_crossbank": 0, "slot_mismatch": 0,
                       "mor_align_errors": 0, "utterances": 0, "tokens": 0,
                       "morphemes": 0}
         self.unknown_types = set()
 
     def _next_id(self, table):
         self.ids[table] += 1
-        return self.ids[table]
+        if table in ("collection", "corpus"):
+            return self.ids[table]
+        return self.id_offset + self.ids[table]
 
     # -- header-level objects ------------------------------------------------
 
@@ -571,12 +640,23 @@ class Processor:
 
     # -- corpus / file processing -------------------------------------------
 
-    def process_corpus_dir(self, corpus_dir):
+    def process_corpus_dir(self, corpus_dir, collection=None, corpus=None,
+                           rel_prefix=None, strict=True):
+        """Process every .cha under corpus_dir.
+
+        collection/corpus: pre-built row dicts (full-run mode); derived from
+        the path when omitted (prototype mode). strict=False logs and skips
+        files chatter cannot parse (known-invalid files) instead of raising.
+        """
         corpus_dir = os.path.abspath(corpus_dir)
         corpus_name = os.path.basename(os.path.normpath(corpus_dir))
         collection_name = os.path.basename(os.path.dirname(corpus_dir))
-        collection = self.get_collection(collection_name)
-        corpus = self.get_corpus(collection, corpus_name)
+        if collection is None:
+            collection = self.get_collection(collection_name)
+        if corpus is None:
+            corpus = self.get_corpus(collection, corpus_name)
+        if rel_prefix is None:
+            rel_prefix = os.path.join(collection_name, corpus_name)
         cha_files = []
         for root, _dirs, files in os.walk(corpus_dir):
             for f in sorted(files):
@@ -584,15 +664,18 @@ class Processor:
                     cha_files.append(os.path.join(root, f))
         cha_files.sort()
         log.info("corpus %s/%s: %d .cha files",
-                 collection_name, corpus_name, len(cha_files))
+                 collection["name"], corpus["name"], len(cha_files))
         for path in cha_files:
-            rel = os.path.join(collection_name, corpus_name,
-                               os.path.relpath(path, corpus_dir))
+            rel = os.path.join(rel_prefix, os.path.relpath(path, corpus_dir))
             try:
                 self.process_file(path, rel, corpus, collection)
             except Exception:
-                log.exception("failed on %s", path)
-                raise
+                if strict:
+                    log.exception("failed on %s", path)
+                    raise
+                self.stats["skipped_invalid"] += 1
+                log.warning("skipping invalid file %s: %s", path,
+                            repr(sys.exc_info()[1])[:300])
 
     def run_chatter(self, path):
         res = subprocess.run([self.chatter_bin, "to-json", path],
@@ -609,6 +692,11 @@ class Processor:
         pid = next((h.get("pid") for h in headers if h.get("type") == "pid"),
                    None)
         if pid is not None:
+            if pid in self.skip_pids:
+                self.stats["skipped_crossbank"] += 1
+                log.info("skipping %s: PID %s kept from the PhonBank tree",
+                         rel_filename, pid)
+                return
             if pid in self.seen_pids:
                 self.stats["skipped_pid"] += 1
                 log.info("skipping %s: PID %s already processed",
@@ -737,6 +825,7 @@ class Processor:
             ort = tiers.get("Ort") if isinstance(tiers.get("Ort"), str) \
                 else bullet_text(tiers.get("Ort"))
             spa = bullet_text(tiers.get("Spa"))
+            pho_items, mod_items = extract_phonology(utt)
 
             # tokens
             tokens = []
@@ -744,6 +833,17 @@ class Processor:
             walk_content((main.get("content") or {}).get("content") or [],
                          False, tokens, slots, self.unknown_types)
             attach_morphology(tokens, slots, utt, self.stats)
+
+            # token-level phonology uses the 2021.1 rule (reader_utils.
+            # get_token_phonology): assign per token, in order, only when the
+            # pho tier has exactly one item per token; otherwise
+            # utterance-level only. (chatter's main_pho alignment domain
+            # includes fillers/nonwords, which are not tokens, so a general
+            # 1:1 index mapping onto tokens does not exist.)
+            tok_pho = pho_items if pho_items and len(pho_items) == len(tokens) \
+                else None
+            tok_mod = mod_items if mod_items and len(mod_items) == len(tokens) \
+                else None
 
             utterance_id = self._next_id("utterance")
             denorm = self._denorm(speaker, target_child, transcript)
@@ -774,7 +874,8 @@ class Processor:
                     language=transcript["language"], token_order=i,
                     replacement=replacement, prefix="",
                     part_of_speech=pos, stem=stem,
-                    actual_phonology="", model_phonology="",
+                    actual_phonology=tok_pho[i - 1] if tok_pho else "",
+                    model_phonology=tok_mod[i - 1] if tok_mod else "",
                     suffix=tok.get("suffix", ""), num_morphemes=nm,
                     english="", clitic=tok.get("clitic", ""),
                     utterance_type=utterance_type,
@@ -804,8 +905,10 @@ class Processor:
 
             utt_rows.append(dict(
                 id=utterance_id, gloss=" ".join(utt_gloss),
-                stem=" ".join(utt_stem), actual_phonology="",
-                model_phonology="", type=utterance_type,
+                stem=" ".join(utt_stem),
+                actual_phonology=" ".join(pho_items) if pho_items else "",
+                model_phonology=" ".join(mod_items) if mod_items else "",
+                type=utterance_type,
                 language=transcript["language"],
                 num_morphemes=utt_num_morphemes,
                 num_tokens=len(utt_gloss), utterance_order=order,
@@ -869,9 +972,10 @@ class Processor:
 
     # -- finalization --------------------------------------------------------
 
-    def finalize(self):
-        self.sink.write("collection", list(self.collections.values()))
-        self.sink.write("corpus", list(self.corpora.values()))
+    def finalize(self, write_collections=True):
+        if write_collections:
+            self.sink.write("collection", list(self.collections.values()))
+            self.sink.write("corpus", list(self.corpora.values()))
         rows = []
         for p in self.participants.values():
             rows.append({k: p.get(k) for k in
@@ -884,18 +988,232 @@ class Processor:
         log.info("stats: %s", self.stats)
 
 
+# ---------------------------------------------------------------------------
+# full-corpus driver (parallel, resumable)
+# ---------------------------------------------------------------------------
+
+# Each corpus gets a disjoint id block for all per-corpus tables (ids are
+# release-internal; the TalkBank PID is the externally-facing stable
+# identifier). The largest corpus in the 2026 mirror uses ~1e7 token_morpheme
+# ids, so 1e9 is ample, and 438 corpora * 1e9 stays far below 2^53 so ids
+# survive an R numeric round-trip. The per-corpus marker files record the max
+# local id actually used and the QA suite checks no block overflowed.
+ID_BLOCK = 10**9
+
+BANK_DATA_SOURCE = {"childes": "CHILDES", "phon": "PhonBank"}
+
+PER_CORPUS_TABLES = ("participant", "transcript", "utterance", "token",
+                     "token_morpheme", "transcript_by_speaker",
+                     "token_frequency")
+
+
+def enumerate_corpora(report_tsv):
+    """(bank, corpus_relpath, n_cha) for every corpus in the sweep report.
+
+    The sweep report (pipeline/validation/report.tsv) enumerates the TalkBank
+    download units, including nested corpora like Other/Setswana/Matlhaku
+    that a naive depth-1 directory scan would miss.
+    """
+    corpora = []
+    with open(report_tsv) as f:
+        header = f.readline().rstrip("\n").split("\t")
+        for line in f:
+            row = dict(zip(header, line.rstrip("\n").split("\t")))
+            corpora.append((row["bank"], row["corpus_path"],
+                            int(row["n_cha"])))
+    corpora.sort()
+    return corpora
+
+
+PID_RE = re.compile(r"@PID:\s*(\S+)")
+
+
+def scan_pids(work_root, corpora, bank):
+    """All @PIDs found in the given bank's .cha files (header scan only)."""
+    pids = set()
+    for b, rel, n in corpora:
+        if b != bank or n == 0:
+            continue
+        base = os.path.join(work_root, b, rel)
+        for root, _dirs, files in os.walk(base):
+            for f in files:
+                if not f.endswith(".cha"):
+                    continue
+                try:
+                    with open(os.path.join(root, f), "rb") as fh:
+                        head = fh.read(4096).decode("utf-8", "replace")
+                except OSError:
+                    continue
+                m = PID_RE.search(head)
+                if m:
+                    pids.add(m.group(1))
+    return pids
+
+
+_SKIP_PIDS_CACHE = {}
+
+
+def _load_skip_pids(path):
+    if not path:
+        return frozenset()
+    if path not in _SKIP_PIDS_CACHE:
+        with open(path) as f:
+            _SKIP_PIDS_CACHE[path] = frozenset(json.load(f))
+    return _SKIP_PIDS_CACHE[path]
+
+
+def run_corpus_shard(task):
+    """Pool worker: process one corpus into per-table part files."""
+    t0 = time.time()
+    logging.basicConfig(level=logging.WARNING)
+    marker = task["marker"]
+    if os.path.exists(marker):
+        with open(marker) as f:
+            return json.load(f)
+    part = "part-%04d" % task["idx"]
+    # remove stale part files from a previous crashed attempt
+    for tbl in SCHEMAS:
+        stale = os.path.join(task["out"], tbl, part + ".parquet")
+        if os.path.exists(stale):
+            os.remove(stale)
+    stats = {"idx": task["idx"], "bank": task["bank"], "corpus": task["rel"]}
+    try:
+        sink = ParquetSink(task["out"], part=part)
+        proc = Processor(sink, chatter_bin=task["chatter"],
+                         data_source=task["corpus_row"]["data_source"],
+                         id_offset=(task["idx"] + 1) * ID_BLOCK,
+                         skip_pids=_load_skip_pids(task.get("skip_pids")))
+        proc.process_corpus_dir(task["corpus_dir"],
+                                collection=task["collection_row"],
+                                corpus=task["corpus_row"],
+                                rel_prefix=task["rel"], strict=False)
+        proc.finalize(write_collections=False)
+        stats.update(proc.stats)
+        stats["max_local_id"] = max(proc.ids[t] for t in PER_CORPUS_TABLES)
+        stats["unknown_types"] = sorted(proc.unknown_types)
+    except Exception as e:  # corpus-level failure: report, don't kill the run
+        stats["error"] = repr(e)[:500]
+    stats["seconds"] = round(time.time() - t0, 1)
+    os.makedirs(os.path.dirname(marker), exist_ok=True)
+    if "error" not in stats:
+        with open(marker, "w") as f:
+            json.dump(stats, f)
+    return stats
+
+
+def full_run(work_root, out_dir, report_tsv, jobs=8,
+             chatter_bin=CHATTER_DEFAULT):
+    corpora = enumerate_corpora(report_tsv)
+    skipped_empty = [c for c in corpora if c[2] == 0]
+    corpora = [c for c in corpora if c[2] > 0]
+    log.info("%d corpora with .cha files (%d empty skipped)",
+             len(corpora), len(skipped_empty))
+
+    # cross-bank dedup: when the same @PID exists in both trees, the PhonBank
+    # copy wins (it carries the phonology tiers). CHILDES-bank workers skip
+    # any transcript whose PID appears in the PhonBank tree.
+    os.makedirs(out_dir, exist_ok=True)
+    phon_pids_path = os.path.join(out_dir, "phon_pids.json")
+    if not os.path.exists(phon_pids_path):
+        t0 = time.time()
+        phon_pids = sorted(scan_pids(work_root, corpora, "phon"))
+        with open(phon_pids_path, "w") as f:
+            json.dump(phon_pids, f)
+        log.info("scanned %d PhonBank PIDs in %.1fs", len(phon_pids),
+                 time.time() - t0)
+
+    # deterministic collection / corpus id assignment (same-named collections
+    # in different banks stay separate rows, as in 2021.1)
+    collections = {}
+    tasks = []
+    for idx, (bank, rel, _n) in enumerate(corpora):
+        ds = BANK_DATA_SOURCE.get(bank, bank)
+        cname = rel.split("/")[0]
+        key = (ds, cname)
+        if key not in collections:
+            collections[key] = {"id": len(collections) + 1, "name": cname,
+                                "data_source": ds}
+        coll = collections[key]
+        corpus_row = {"id": idx + 1, "name": os.path.basename(rel),
+                      "collection_id": coll["id"], "collection_name": cname,
+                      "data_source": ds}
+        tasks.append({"idx": idx, "bank": bank, "rel": rel,
+                      "corpus_dir": os.path.join(work_root, bank, rel),
+                      "out": out_dir, "chatter": chatter_bin,
+                      "collection_row": coll, "corpus_row": corpus_row,
+                      "skip_pids": (phon_pids_path if bank == "childes"
+                                    else None),
+                      "marker": os.path.join(out_dir, "markers",
+                                             "%04d.json" % idx)})
+
+    pq.write_table(pa.Table.from_pylist(list(collections.values()),
+                                        schema=SCHEMAS["collection"]),
+                   os.path.join(out_dir, "collection.parquet"),
+                   compression="zstd")
+    pq.write_table(pa.Table.from_pylist([t["corpus_row"] for t in tasks],
+                                        schema=SCHEMAS["corpus"]),
+                   os.path.join(out_dir, "corpus.parquet"),
+                   compression="zstd")
+
+    import multiprocessing
+    t0 = time.time()
+    done = 0
+    totals = {"files": 0, "utterances": 0, "tokens": 0, "morphemes": 0,
+              "skipped_invalid": 0, "skipped_pid": 0,
+              "skipped_crossbank": 0, "slot_mismatch": 0}
+    failures = []
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Pool(jobs) as pool:
+        for stats in pool.imap_unordered(run_corpus_shard, tasks):
+            done += 1
+            if "error" in stats:
+                failures.append(stats)
+                log.error("[%d/%d] FAILED %s/%s: %s", done, len(tasks),
+                          stats["bank"], stats["corpus"], stats["error"])
+                continue
+            for k in totals:
+                totals[k] += stats.get(k, 0)
+            log.info("[%d/%d] %s/%s: files=%d utt=%d tok=%d morph=%d "
+                     "skipped=%d (%.1fs)", done, len(tasks), stats["bank"],
+                     stats["corpus"], stats.get("files", 0),
+                     stats.get("utterances", 0), stats.get("tokens", 0),
+                     stats.get("morphemes", 0),
+                     stats.get("skipped_invalid", 0), stats["seconds"])
+    log.info("FULL RUN DONE in %.1f min: %s | %d corpus failures",
+             (time.time() - t0) / 60, totals, len(failures))
+    for f in failures:
+        log.error("failed corpus: %s/%s: %s", f["bank"], f["corpus"],
+                  f["error"])
+    return totals, failures
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("corpus_dirs", nargs="+",
+    ap.add_argument("corpus_dirs", nargs="*",
                     help="corpus directories, e.g. work/childes/Eng-NA/Brown")
     ap.add_argument("--out", required=True, help="output parquet directory")
     ap.add_argument("--chatter", default=CHATTER_DEFAULT,
                     help="path to the chatter binary")
     ap.add_argument("--data-source", default="CHILDES")
+    ap.add_argument("--full-run", action="store_true",
+                    help="process every corpus under --work (parallel, "
+                         "resumable; corpora come from --report)")
+    ap.add_argument("--work", default=None,
+                    help="work root containing <bank>/<collection>/<corpus>")
+    ap.add_argument("--report", default=None,
+                    help="validation sweep TSV enumerating corpora")
+    ap.add_argument("--jobs", type=int, default=8)
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(message)s")
+    if args.full_run:
+        if not (args.work and args.report):
+            ap.error("--full-run requires --work and --report")
+        return full_run(args.work, args.out, args.report, jobs=args.jobs,
+                        chatter_bin=args.chatter)
+    if not args.corpus_dirs:
+        ap.error("corpus_dirs required unless --full-run")
     sink = ParquetSink(args.out)
     proc = Processor(sink, chatter_bin=args.chatter,
                      data_source=args.data_source)
