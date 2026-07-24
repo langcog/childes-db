@@ -8,8 +8,10 @@ transcripts_participants.py) from the typed JSON emitted by the `chatter` CLI
 
 Tables produced (columns mirror the 2021.1 MySQL tables, with additions):
   collection, corpus, participant, transcript,
-  utterance   (+ ort, spa),
-  token       (+ gra_index, gra_head, gra_relation),
+  utterance      (+ ort, spa),
+  token          (+ gra_index, gra_head, gra_relation),
+  token_morpheme (NEW: one row per morpheme from the typed %mor items;
+                  design follows childes-mor by Meylan/Braginsky),
   transcript_by_speaker, token_frequency
 
 Known, documented differences from the 2021.1 build:
@@ -320,6 +322,20 @@ def attach_morphology(tokens, slots, utt, stats):
         item = items[ti]
         main = item.get("main") or {}
         clitics = item.get("post_clitics") or []
+        # typed morpheme list for the token_morpheme table. chatter's Mor
+        # item structure (see `chatter schema`) is main + post_clitics, each
+        # a MorWord {pos, lemma, features}; UD-style %mor has no
+        # prefix/compound substructure (compound lemmas are fused, separated
+        # prefixes are their own main-tier tokens), so the prefix / suffix /
+        # compound_part types are reserved and currently never emitted.
+        morphemes = tok.setdefault("morphemes", [])
+        morphemes.append({"type": "stem", "lemma": main.get("lemma"),
+                          "pos": main.get("pos"),
+                          "features": main.get("features") or []})
+        for c in clitics:
+            morphemes.append({"type": "clitic", "lemma": c.get("lemma"),
+                              "pos": c.get("pos"),
+                              "features": c.get("features") or []})
         # accumulate: a multi-word replacement maps several mor items onto one
         # token (old pipeline joined the children's morphology with spaces)
         _append(tok, "stem", main.get("lemma") or "")
@@ -409,6 +425,20 @@ SCHEMAS = {
         # new columns (from the %gra tier via chatter alignments)
         ("gra_index", pa.int32()), ("gra_head", pa.int32()),
         ("gra_relation", pa.string())]),
+    # NEW table (no 2021.1 counterpart): one row per morpheme, from chatter's
+    # typed Mor items. `type` is stem | clitic today; prefix | suffix |
+    # compound_part are reserved for classic-MOR data if chatter ever exposes
+    # them (UD-style %mor fuses compounds and has no prefix marking).
+    "token_morpheme": _schema([
+        ("id", pa.int64()), ("token_id", pa.int64()),
+        ("morpheme_order", pa.int32()), ("type", pa.string()),
+        ("lemma", pa.string()), ("pos", pa.string()),
+        ("features", pa.string()),  # JSON-array string, e.g. '["Inf","S"]'
+        ("language", pa.string()), ("utterance_id", pa.int64()),
+        ("transcript_id", pa.int64()), ("corpus_id", pa.int64()),
+        ("corpus_name", pa.string()), ("speaker_id", pa.int64()),
+        ("speaker_role", pa.string()), ("target_child_id", pa.int64()),
+        ("collection_id", pa.int64()), ("collection_name", pa.string())]),
     "transcript_by_speaker": _schema([
         ("id", pa.int64()), ("speaker_role", pa.string()),
         ("language", pa.string()), ("target_child_name", pa.string()),
@@ -471,7 +501,8 @@ class Processor:
         self.participants = {}     # lookup key -> row dict
         self.seen_pids = set()
         self.stats = {"files": 0, "skipped_pid": 0, "slot_mismatch": 0,
-                      "mor_align_errors": 0, "utterances": 0, "tokens": 0}
+                      "mor_align_errors": 0, "utterances": 0, "tokens": 0,
+                      "morphemes": 0}
         self.unknown_types = set()
 
     def _next_id(self, table):
@@ -659,6 +690,7 @@ class Processor:
                            collection):
         utt_rows = []
         token_rows = []
+        morpheme_rows = []
         # per-speaker accumulators for transcript_by_speaker / token_frequency
         per_speaker = {p["id"]: {"n_utt": 0, "tok_counts": [], "glosses": [],
                                  "morphemes": []}
@@ -694,7 +726,8 @@ class Processor:
                 ttype = term.get("type")
                 utterance_type = TERMINATOR_TYPE_MAP.get(ttype, ttype)
 
-            bullet = main.get("bullet")
+            bullet = main.get("bullet") \
+                or (main.get("content") or {}).get("bullet")
             media_start = bullet["start_ms"] / 1000.0 if bullet else None
             media_end = bullet["end_ms"] / 1000.0 if bullet else None
             media_unit = "s" if bullet else None
@@ -735,8 +768,9 @@ class Processor:
                     rep_words = (tok["item"].get("replacement") or {}) \
                         .get("words") or []
                     replacement = " ".join(word_gloss(w) for w in rep_words)
+                token_id = self._next_id("token")
                 token_rows.append(dict(
-                    id=self._next_id("token"), gloss=gloss,
+                    id=token_id, gloss=gloss,
                     language=transcript["language"], token_order=i,
                     replacement=replacement, prefix="",
                     part_of_speech=pos, stem=stem,
@@ -749,6 +783,24 @@ class Processor:
                     gra_head=tok.get("gra_head"),
                     gra_relation=tok.get("gra_relation"),
                     **denorm))
+                for j, mor in enumerate(tok.get("morphemes") or []):
+                    morpheme_rows.append(dict(
+                        id=self._next_id("token_morpheme"),
+                        token_id=token_id, morpheme_order=j,
+                        type=mor["type"], lemma=mor["lemma"],
+                        pos=mor["pos"],
+                        features=json.dumps(mor["features"]),
+                        language=transcript["language"],
+                        utterance_id=utterance_id,
+                        transcript_id=transcript["id"],
+                        corpus_id=transcript["corpus_id"],
+                        corpus_name=transcript["corpus_name"],
+                        speaker_id=speaker["id"],
+                        speaker_role=speaker["role"],
+                        target_child_id=(target_child["id"]
+                                         if target_child else None),
+                        collection_id=transcript["collection_id"],
+                        collection_name=transcript["collection_name"]))
 
             utt_rows.append(dict(
                 id=utterance_id, gloss=" ".join(utt_gloss),
@@ -772,6 +824,8 @@ class Processor:
 
         self.sink.write("utterance", utt_rows)
         self.sink.write("token", token_rows)
+        self.sink.write("token_morpheme", morpheme_rows)
+        self.stats["morphemes"] += len(morpheme_rows)
 
         # transcript_by_speaker + token_frequency
         tbs_rows, tf_rows = [], []

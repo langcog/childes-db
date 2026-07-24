@@ -6,7 +6,7 @@
 **Output:** `pipeline/parquet_proto/*.parquet` (zstd), one file per 2021.1 table:
 collection, corpus, participant, transcript, utterance (+`ort`, `spa`),
 token (+`gra_index`, `gra_head`, `gra_relation`), transcript_by_speaker,
-token_frequency.
+token_frequency, plus the new `token_morpheme` table (§6).
 
 Totals: 246 files, 233,340 utterances, 804,890 tokens. Runtime ~70 s
 single-process. Internal consistency counters: 0 utterances where the
@@ -125,8 +125,8 @@ alignable words.
 3. utterance `actual_phonology`/`model_phonology` are empty (`%pho`/`%mod`
    absent from both prototype corpora; wiring exists for tiers but PhonBank
    handling is out of prototype scope).
-4. `media_start/end` in seconds from chatter ms bullets (both corpora
-   unlinked → null throughout).
+4. `media_start/end` in seconds from chatter ms bullets (Brown and Hamasaki
+   are unlinked → null; German/Caroline has bullets, see §6).
 5. `num_types` here is case-insensitive distinct gloss count (matches the
    2021.1 MySQL ci-collation behavior of `DISTINCT gloss`).
 6. Participant `name` is null where current `@Participants` headers omit
@@ -142,3 +142,93 @@ python pipeline/chatter_parse.py --out pipeline/parquet_proto \
 
 (venv needs pyarrow + scipy; validation additionally used pymysql + pandas
 against MySQL db `2021.1`.)
+
+## 6. token_morpheme table (added 2026-07-23)
+
+New morpheme-level table, one row per morpheme, populated directly from
+chatter's typed `%mor` items. The design follows Stephan Meylan and Mika
+Braginsky's standalone morphology work in `childes-mor/` (whose
+`checks.R` enumerates the edge cases tested below). Validation scope for
+this section: Brown + Hamasaki + **German/Caroline** (236 .cha, all valid;
+Leo avoided — 83/500 files fail chatter validation per
+`validate_sweep.log`). Totals for the three corpora: 482 files, 291,079
+utterances, 1,060,190 tokens, **1,080,572 token_morpheme rows**;
+`slot_mismatch=0`.
+
+### Schema as implemented
+
+| column | type | notes |
+|---|---|---|
+| id | int64 | global sequential |
+| token_id | int64 | FK to token.id |
+| morpheme_order | int32 | 0-based, contiguous within token |
+| type | string | `stem` \| `clitic` today; `prefix` \| `suffix` \| `compound_part` reserved (see below) |
+| lemma | string | MorWord lemma, never null |
+| pos | string | UD POS, never null |
+| features | string | JSON-array string of UD features, e.g. `'["Inf","S"]'` |
+| language, utterance_id, transcript_id, corpus_id/name, speaker_id, speaker_role, target_child_id, collection_id/name | — | usual denormalization pattern |
+
+Derivation (verified against `chatter schema`, not guessed): a `%mor` item
+is `main {pos, lemma, features}` + `post_clitics[{pos, lemma, features}]` —
+nothing else. `main` → one `stem` row; each post-clitic → one `clitic` row.
+Multi-word replacements map several items onto one token, so a token can
+carry several `stem` rows (order continues across items). The
+`prefix`/`suffix`/`compound_part` types cannot occur in the current data:
+UD-style Batchalign `%mor` fuses compound lemmas (`bunny_rabbit` →
+`propn|bunnyrabbit`), carries affix information as features (the `features`
+column), and renders German separated prefixes as their own main-tier
+tokens; they are reserved for classic-MOR data if chatter ever exposes that
+substructure. Empirical confirmation: zero lemmas containing `+ # _ ~ =`
+across all three corpora.
+
+### Row counts and type distribution
+
+| corpus | tokens | token_morpheme rows | stem | clitic | rows/token |
+|---|---|---|---|---|---|
+| Brown | 672,689 | 696,969 | 654,474 | 42,495 | 1.036 |
+| Caroline | 255,300 | 254,384 | 252,827 | 1,557 | 0.996 |
+| Hamasaki | 132,201 | 129,219 | 129,219 | 0 | 0.977 |
+
+(rows/token < 1 because morphology-free tokens — xxx/yyy, retraces,
+utterances without `%mor` — correctly have zero rows.)
+
+### Invariants (all pass on the full 3-corpus output)
+
+* Every morphology-bearing token (non-empty stem) has ≥1 row:
+  **1,036,363/1,036,363**; zero rows attached to morphology-free tokens
+  (23,827 of them, incl. 14,549 `xxx`).
+* `morpheme_order` contiguous 0..n−1 within every token: 0 violations.
+* Features round-trip: every `features` value parses as a JSON array, and
+  the concatenated stem-row features reproduce the token's flattened
+  `suffix` column exactly for all 1,036,363 tokens.
+
+### checks.R edge cases (real corpus examples)
+
+1. **Compounds / several morphemes on one `%gra` slot** (their
+   `compound_first`/`gra_fake` logic). Fused compound: Brown
+   `bunny_rabbit` → one token, one `stem` row (`propn|bunnyrabbit`), one
+   gra triple — PASS. Modern multi-morpheme case (replacement): Brown
+   `gonna [: going to]` → one token with two ordered `stem` rows
+   (`verb|go ["Part","Pres","S"]`, `part|to []`) sharing the token's single
+   gra triple; the utterance's `gra_index` sequence stays 1:1 with mor
+   items with no index consumed twice — PASS.
+2. **Separated prefixes (German)**. Caroline has 1,987 separated-prefix
+   particle tokens (gra relation `COMPOUND-PRT`). Example
+   (`Caroline/001002.cha`): *jetz machen wir mal ne frische Windel für den
+   Hasen zurecht* — particle `zurecht` is its own token with its own
+   `stem` row (`adv|zurecht`) and `11|2|COMPOUND-PRT`, whose head is the
+   verb `machen` (`2|0|ROOT`), matching the raw `%gra` line exactly — PASS.
+3. **Morphemes/tokens with no gra index**. In these corpora Batchalign
+   always emits `%gra` alongside `%mor` (0 morphology-bearing tokens lack a
+   gra triple), so the no-gra case is the morphology-free token class:
+   23,827 tokens (xxx/yyy, retraced words, no-`%mor` utterances) have null
+   gra columns and zero morpheme rows — PASS. Japanese comma separators
+   consume their own `%mor`/`%gra` slot (`cm|cm`) without producing a token
+   or morpheme row, so word-token `gra_index` values correctly skip them.
+
+### Incidental fix in this change
+
+Utterance media bullets were being read from the wrong JSON path
+(`main.bullet` instead of `main.content.bullet`) and were always null.
+Fixed; Caroline now has `media_start`/`media_end` (seconds) on 51.6% of
+utterances. Brown/Hamasaki genuinely have no bullets.
