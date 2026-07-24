@@ -14,3 +14,12 @@ config.json
 djangoapp/.idea
 .Rproj.user
 .Rhistory
+.secrets
+redivis/staging/
+pipeline/raw/
+pipeline/work/
+pipeline/validation/
+pipeline/parquet_proto/
+pipeline/__pycache__/
+pipeline/*.log
+jp/
