@@ -245,9 +245,12 @@ def word_gloss(word):
 NON_WORD_TYPES = {
     "pause", "event", "annotated_event", "freecode", "annotated_action",
     "separator", "postcode", "tagmarker", "long_event",
+    "overlap_point", "internal_bullet", "other_spoken_event",
 }
-# quotation words are ordinary alignable tokens (old pipeline saw them as <w>)
-GROUP_TYPES = {"retrace", "annotated_group", "group", "quotation"}
+# quotation words are ordinary alignable tokens (old pipeline saw them as
+# <w>); pho groups (`‹...›`) wrap ordinary words for %pho alignment
+GROUP_TYPES = {"retrace", "annotated_group", "group", "quotation",
+               "pho_group"}
 WORD_TYPES = {"word", "annotated_word", "replaced_word"}
 
 
@@ -270,7 +273,10 @@ def walk_content(items, in_retrace, tokens, slots, unknown_types):
                 # never saw these as <w> tokens; they are also outside the
                 # mor-alignable domain.
                 continue
-            alignable = (not in_retrace) and w.get("untranscribed") is None
+            # a replaced word is alignable even when its spoken form is
+            # xxx/yyy ("xxx [: Iolo]"): %mor annotates the replacement
+            alignable = (not in_retrace) and (
+                t == "replaced_word" or w.get("untranscribed") is None)
             tok = {"item": item, "word": w, "slot": None}
             if alignable:
                 tok["slot"] = len(slots)
