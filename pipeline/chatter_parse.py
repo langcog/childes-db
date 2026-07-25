@@ -551,7 +551,7 @@ class ParquetSink:
 
 class Processor:
     def __init__(self, sink, chatter_bin=CHATTER_DEFAULT, data_source="CHILDES",
-                 id_offset=0, skip_pids=None):
+                 id_offset=0, skip_pids=None, identity_map=None):
         """id_offset: base added to every per-corpus table id (participant,
         transcript, utterance, token, token_morpheme, transcript_by_speaker,
         token_frequency). The full-corpus driver gives each corpus a disjoint
@@ -561,12 +561,19 @@ class Processor:
 
         skip_pids: transcripts whose @PID is in this set are skipped entirely
         (used to drop CHILDES-bank copies of transcripts that also exist in
-        the PhonBank tree, which carries the phonology tiers)."""
+        the PhonBank tree, which carries the phonology tiers).
+
+        identity_map: {transcript rel filename: {"key": .., "name": ..}} from
+        child_identity.py. When present, the target child's participant
+        identity is the map's key (learned path rule / 2021.1 ground truth)
+        instead of the @Participants name, and the map's name (2021.1 child
+        name or Day label) becomes the participant/display name."""
         self.sink = sink
         self.chatter_bin = chatter_bin
         self.data_source = data_source
         self.id_offset = id_offset
         self.skip_pids = skip_pids or frozenset()
+        self.identity_map = identity_map or {}
         self.ids = {t: 0 for t in SCHEMAS}
         self.collections = {}      # name -> row dict
         self.corpora = {}          # (collection, name) -> row dict
@@ -575,7 +582,7 @@ class Processor:
         self.stats = {"files": 0, "skipped_pid": 0, "skipped_invalid": 0,
                       "skipped_crossbank": 0, "slot_mismatch": 0,
                       "mor_align_errors": 0, "utterances": 0, "tokens": 0,
-                      "morphemes": 0}
+                      "morphemes": 0, "identity_fallback": 0}
         self.unknown_types = set()
 
     def _next_id(self, table):
@@ -603,18 +610,25 @@ class Processor:
         return self.corpora[key]
 
     def get_or_create_participant(self, corpus, collection, pmeta, age,
-                                  target_child=None):
+                                  target_child=None, identity=None):
         """Mirror of transcripts_participants.get_or_create_participant.
 
         pmeta: chatter participant entry {code, name, role, id:{...}}.
         Dedup key: (corpus, code, name, role) plus target_child for
-        non-target-child participants.
+        non-target-child participants. identity=(key, name) overrides the
+        name in the dedup key (and supplies the display name) for target
+        children when a child-identity map is active.
         """
         pid_info = pmeta.get("id") or {}
         code = pmeta.get("code")
         name = pmeta.get("name")
+        identity_key = None
+        if identity is not None:
+            identity_key, identity_name = identity
+            name = identity_name if identity_name is not None else name
         role = pmeta.get("role")
-        key = (corpus["id"], code, name, role,
+        key = (corpus["id"], code,
+               identity_key if identity_key is not None else name, role,
                target_child["id"] if target_child else None)
         participant = self.participants.get(key)
         if participant is None:
@@ -725,8 +739,17 @@ class Processor:
         if len(target_meta) == 1:
             tmeta = target_meta[0]
             age = parse_chat_age((tmeta.get("id") or {}).get("age"))
+            identity = None
+            if self.identity_map:
+                ent = self.identity_map.get(rel_filename)
+                if ent is None:
+                    # file unseen when the map was built: its own child
+                    self.stats["identity_fallback"] += 1
+                    identity = ("file:" + rel_filename, tmeta.get("name"))
+                else:
+                    identity = (ent.get("key"), ent.get("name"))
             target_child = self.get_or_create_participant(
-                corpus, collection, tmeta, age)
+                corpus, collection, tmeta, age, identity=identity)
             target_child["target_child_id"] = target_child["id"]
             target_child["age"] = age  # per-transcript age, not persisted
             participants.append(target_child)
@@ -1083,12 +1106,22 @@ def run_corpus_shard(task):
         if os.path.exists(stale):
             os.remove(stale)
     stats = {"idx": task["idx"], "bank": task["bank"], "corpus": task["rel"]}
+    identity_map = None
+    ident_path = task.get("identity_map")
+    if ident_path and os.path.exists(ident_path):
+        with open(ident_path) as f:
+            ident = json.load(f)
+        # map keys are within-corpus paths; transcript filenames are
+        # '<corpus_rel>/<within>'
+        identity_map = {task["rel"] + "/" + rp: v
+                        for rp, v in ident.get("assignments", {}).items()}
     try:
         sink = ParquetSink(task["out"], part=part)
         proc = Processor(sink, chatter_bin=task["chatter"],
                          data_source=task["corpus_row"]["data_source"],
                          id_offset=(task["idx"] + 1) * ID_BLOCK,
-                         skip_pids=_load_skip_pids(task.get("skip_pids")))
+                         skip_pids=_load_skip_pids(task.get("skip_pids")),
+                         identity_map=identity_map)
         proc.process_corpus_dir(task["corpus_dir"],
                                 collection=task["collection_row"],
                                 corpus=task["corpus_row"],
@@ -1108,7 +1141,7 @@ def run_corpus_shard(task):
 
 
 def full_run(work_root, out_dir, report_tsv, jobs=8,
-             chatter_bin=CHATTER_DEFAULT):
+             chatter_bin=CHATTER_DEFAULT, identity_dir=None):
     corpora = enumerate_corpora(report_tsv)
     skipped_empty = [c for c in corpora if c[2] == 0]
     corpora = [c for c in corpora if c[2] > 0]
@@ -1149,6 +1182,9 @@ def full_run(work_root, out_dir, report_tsv, jobs=8,
                       "collection_row": coll, "corpus_row": corpus_row,
                       "skip_pids": (phon_pids_path if bank == "childes"
                                     else None),
+                      "identity_map": (os.path.join(
+                          identity_dir, "corpus-%04d.json" % (idx + 1))
+                          if identity_dir else None),
                       "marker": os.path.join(out_dir, "markers",
                                              "%04d.json" % idx)})
 
@@ -1209,6 +1245,9 @@ def main(argv=None):
     ap.add_argument("--report", default=None,
                     help="validation sweep TSV enumerating corpora")
     ap.add_argument("--jobs", type=int, default=8)
+    ap.add_argument("--identity-dir", default=None,
+                    help="child-identity maps from child_identity.py "
+                         "(full-run mode)")
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO,
@@ -1217,7 +1256,8 @@ def main(argv=None):
         if not (args.work and args.report):
             ap.error("--full-run requires --work and --report")
         return full_run(args.work, args.out, args.report, jobs=args.jobs,
-                        chatter_bin=args.chatter)
+                        chatter_bin=args.chatter,
+                        identity_dir=args.identity_dir)
     if not args.corpus_dirs:
         ap.error("corpus_dirs required unless --full-run")
     sink = ParquetSink(args.out)

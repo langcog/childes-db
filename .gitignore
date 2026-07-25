@@ -25,3 +25,4 @@ pipeline/*.log
 jp/
 pipeline/parquet_full/
 pipeline/parquet_proto/
+pipeline/child_identity_maps/
